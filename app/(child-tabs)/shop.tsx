@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, SafeAreaView, TouchableOpacity, Mod
 import PointBadge from '@/components/PointBadge';
 import { useFamilyStore } from '@/stores/useFamilyStore';
 import { useShopStore } from '@/stores/useShopStore';
+import { usePetStore } from '@/stores/usePetStore';
 import { ShopItem, ITEM_TYPE_EMOJI } from '@/types';
 
 type ShopTab = 'gift' | 'cosmetic' | 'privilege';
@@ -15,7 +16,7 @@ const TAB_CONFIG: Array<{ key: ShopTab; label: string; icon: string }> = [
 
 export default function ShopScreen() {
   const { currentChild, currentFamily } = useFamilyStore();
-  const { items, loadItems, purchaseItem } = useShopStore();
+  const { items, loadItems, purchaseItem, loadEquipments } = useShopStore();
   const [tab, setTab] = useState<ShopTab>('gift');
   const [selectedItem, setSelectedItem] = useState<ShopItem | null>(null);
 
@@ -31,10 +32,16 @@ export default function ShopScreen() {
 
   const handlePurchase = () => {
     if (!selectedItem || !currentChild) return;
-    purchaseItem(currentChild.id, selectedItem.id)
-      .then(() => {
+    const itemSnapshot = selectedItem;
+    const childId = currentChild.id;
+    purchaseItem(childId, itemSnapshot.id)
+      .then(async () => {
+        const pet = usePetStore.getState().pet;
+        if (itemSnapshot.item_type === 'cosmetic' && pet?.child_id === childId) {
+          await loadEquipments(pet.id);
+        }
         setSelectedItem(null);
-        Alert.alert('成功', `已兑换「${selectedItem.name}」！`);
+        Alert.alert('成功', `已兑换「${itemSnapshot.name}」！`);
       })
       .catch((err: Error) => {
         Alert.alert('提示', err.message);
@@ -77,15 +84,28 @@ export default function ShopScreen() {
           </View>
         ) : (
           filteredItems.map((item) => {
-            const canAfford = item.price_type === 'points'
-              ? balance >= item.price
-              : stars >= item.price;
+            const needsParent = item.parent_approval === 1;
+            const outOfStock = item.stock !== -1 && item.stock <= 0;
+            const canAfford =
+              !needsParent &&
+              !outOfStock &&
+              (item.price_type === 'points' ? balance >= item.price : stars >= item.price);
 
             return (
               <TouchableOpacity
                 key={item.id}
                 style={[styles.itemCard, !canAfford && styles.itemDisabled]}
-                onPress={() => canAfford && setSelectedItem(item)}
+                onPress={() => {
+                  if (needsParent) {
+                    Alert.alert('提示', '该商品需由家长在家长端代为兑换');
+                    return;
+                  }
+                  if (outOfStock) {
+                    Alert.alert('提示', '该商品已售罄');
+                    return;
+                  }
+                  if (canAfford) setSelectedItem(item);
+                }}
                 activeOpacity={0.7}
               >
                 <View style={styles.itemImageArea}>
@@ -98,7 +118,13 @@ export default function ShopScreen() {
                     amount={item.price}
                     size="small"
                   />
-                  {!canAfford && <Text style={styles.notEnough}>不足</Text>}
+                  {needsParent ? (
+                    <Text style={styles.notEnough}>家长兑换</Text>
+                  ) : outOfStock ? (
+                    <Text style={styles.notEnough}>售罄</Text>
+                  ) : (
+                    !canAfford && <Text style={styles.notEnough}>不足</Text>
+                  )}
                 </View>
               </TouchableOpacity>
             );
