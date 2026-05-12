@@ -9,7 +9,9 @@
     "web": "expo start --web",
     "prebuild:android": "expo prebuild --platform android --no-install",
     "build:apk": "cd android && gradlew.bat assembleRelease",
-    "build:apk:debug": "cd android && gradlew.bat assembleDebug"
+    "build:apk:debug": "cd android && gradlew.bat assembleDebug",
+    "lint": "eslint . --ext .ts,.tsx",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -49,9 +51,13 @@
     "zustand": "^5.0.13"
   },
   "devDependencies": {
+    "@eslint/js": "^9.0.0",
     "@types/crypto-js": "^4.2.2",
     "@types/react": "~19.1.0",
     "@types/uuid": "^10.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^9.0.0",
     "react-test-renderer": "19.1.0",
     "typescript": "~5.9.2"
   },
