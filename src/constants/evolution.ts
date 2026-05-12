@@ -1,5 +1,6 @@
 import { PetEvolutionStage } from '@/types';
 import { ImageSourcePropType } from 'react-native';
+import { PET_IMAGES } from '../../assets/images/petImages';
 
 export const PET_EVOLUTION_STAGES: PetEvolutionStage[] = [
   {
@@ -126,53 +127,9 @@ export function getStreakReward(days: number) {
 }
 
 // ============================================================
-// 宠物图片映射（根据种类和进化阶段）
-// 路径相对于 src/constants/ → ../../assets/images/pets/
+// 宠物图片映射（通过 assets/images/petImages.ts 集中管理，符合 P6 原则）
 // ============================================================
-const PET_IMAGE_MAP: Record<string, Record<number, ImageSourcePropType>> = {
-  dragon: {
-    1: require('../../assets/images/pets/dragon_stage1.png'),
-    2: require('../../assets/images/pets/dragon_stage2.png'),
-    3: require('../../assets/images/pets/dragon_stage3.png'),
-    4: require('../../assets/images/pets/dragon_stage4.png'),
-    5: require('../../assets/images/pets/dragon_stage5.png'),
-  },
-  cat: {
-    1: require('../../assets/images/pets/cat_stage1.png'),
-    2: require('../../assets/images/pets/cat_stage2.png'),
-    3: require('../../assets/images/pets/cat_stage3.png'),
-    4: require('../../assets/images/pets/cat_stage4.png'),
-    5: require('../../assets/images/pets/cat_stage5.png'),
-  },
-  dog: {
-    1: require('../../assets/images/pets/dog_stage1.png'),
-    2: require('../../assets/images/pets/dog_stage2.png'),
-    3: require('../../assets/images/pets/dog_stage3.png'),
-    4: require('../../assets/images/pets/dog_stage4.png'),
-    5: require('../../assets/images/pets/dog_stage5.png'),
-  },
-  rabbit: {
-    1: require('../../assets/images/pets/rabbit_stage1.png'),
-    2: require('../../assets/images/pets/rabbit_stage2.png'),
-    3: require('../../assets/images/pets/rabbit_stage3.png'),
-    4: require('../../assets/images/pets/rabbit_stage4.png'),
-    5: require('../../assets/images/pets/rabbit_stage5.png'),
-  },
-  panda: {
-    1: require('../../assets/images/pets/panda_stage1.png'),
-    2: require('../../assets/images/pets/panda_stage2.png'),
-    3: require('../../assets/images/pets/panda_stage3.png'),
-    4: require('../../assets/images/pets/panda_stage4.png'),
-    5: require('../../assets/images/pets/panda_stage5.png'),
-  },
-  fox: {
-    1: require('../../assets/images/pets/fox_stage1.png'),
-    2: require('../../assets/images/pets/fox_stage2.png'),
-    3: require('../../assets/images/pets/fox_stage3.png'),
-    4: require('../../assets/images/pets/fox_stage4.png'),
-    5: require('../../assets/images/pets/fox_stage5.png'),
-  },
-};
+const PET_IMAGE_MAP: Record<string, Record<number, ImageSourcePropType>> = PET_IMAGES;
 
 /**
  * 获取宠物图片的 require 源，供 <Image source={...} /> 使用。

@@ -6,20 +6,7 @@ import {
   PointRecord,
   CurrencyType,
 } from '../types';
-import { getDatabase } from '../db/database';
-
-// ============================================================
-// DB helpers
-// ============================================================
-async function dbRun(sql: string, params: any[] = []) {
-  const db = await getDatabase();
-  await db.runAsync(sql, params);
-}
-
-async function dbGetAll<T>(sql: string, params: any[] = []): Promise<T[]> {
-  const db = await getDatabase();
-  return (await db.getAllAsync<T>(sql, params)) ?? [];
-}
+import { dbGetAll, dbRun } from '../db/helpers';
 
 // ============================================================
 // Store interface

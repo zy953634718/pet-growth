@@ -3,7 +3,7 @@
 // ============================================================
 
 export { Colors, Typography, Spacing, BorderRadius, Shadows, Breakpoints, TouchTarget, TabBarConfig } from './tokens';
-export { useResponsive, scale, moderateScaleStatic, fontSizeStatic, clamp, wp, hp } from './responsive';
+export { useResponsive, scale, moderateScaleStatic, fontSizeStatic, clamp } from './responsive';
 export {
   ScreenContainer, ScrollContent, CardStyle, CardShadow,
   SectionTitle, PrimaryButton, PrimaryButtonText,

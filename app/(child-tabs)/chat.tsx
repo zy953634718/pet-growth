@@ -232,9 +232,9 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   avatarSmall: {
-    width: Spacing.base * 2,
-    height: Spacing.base * 2,
-    borderRadius: Spacing.base,
+    width: Spacing[4] * 2,
+    height: Spacing[4] * 2,
+    borderRadius: Spacing[4],
     backgroundColor: Colors.primary50,
     alignItems: 'center',
     justifyContent: 'center',

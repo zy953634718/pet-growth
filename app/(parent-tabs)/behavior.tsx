@@ -443,7 +443,7 @@ const styles = StyleSheet.create({
   },
   pointsBadge: {
     width: Spacing[5] + 2,
-    height: Spacing[7],
+    height: Spacing[6],
     borderRadius: Spacing.xs,
     alignItems: 'center',
     justifyContent: 'center',

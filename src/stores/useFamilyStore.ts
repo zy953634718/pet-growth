@@ -3,7 +3,8 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { Platform } from 'react-native';
 import { v4 as uuidv4 } from 'uuid';
 import { Family, Child } from '../types';
-import { getDatabase, wipeAllUserData } from '../db/database';
+import { wipeAllUserData } from '../db/database';
+import { dbGetAll, dbGetOne, dbRun } from '../db/helpers';
 import { sqlitePersistStorage, clearFamilySessionPersist } from '../db/sqlitePersistStorage';
 
 // ============================================================
@@ -14,26 +15,6 @@ const webPersistStorage = {
   setItem: (key: string, value: string) => Promise.resolve(localStorage.setItem(key, value)),
   removeItem: (key: string) => Promise.resolve(localStorage.removeItem(key)),
 };
-
-// ============================================================
-// Helper: run SQL and return rows
-// ============================================================
-async function dbRun(sql: string, params: any[] = []) {
-  const db = await getDatabase();
-  await db.runAsync(sql, params);
-}
-
-async function dbGetOne<T>(sql: string, params: any[] = []): Promise<T | null> {
-  const db = await getDatabase();
-  const row = await db.getFirstAsync<T>(sql, params);
-  return row ?? null;
-}
-
-async function dbGetAll<T>(sql: string, params: any[] = []): Promise<T[]> {
-  const db = await getDatabase();
-  const rows = await db.getAllAsync<T>(sql, params);
-  return rows ?? [];
-}
 
 // ============================================================
 // Store interface
@@ -257,7 +238,9 @@ export const useFamilyStore = create<FamilyState>()(
         Platform.OS === 'web' ? webPersistStorage : sqlitePersistStorage
       ),
       partialize: (state) => ({
-        currentFamily: state.currentFamily,
+        currentFamily: state.currentFamily
+          ? { ...state.currentFamily, parent_password: '' }  // BUG-11 修复：不持久化明文密码
+          : null,
         currentRole: state.currentRole,
         currentChild: state.currentChild,
         isAuthenticated: state.isAuthenticated,

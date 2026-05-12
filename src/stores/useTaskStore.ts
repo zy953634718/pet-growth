@@ -11,30 +11,14 @@ import {
   Streak,
   Priority,
 } from '../types';
-import { getDatabase } from '../db/database';
+import { dbGetAll, dbGetOne, dbRun } from '../db/helpers';
 import { STREAK_REWARDS } from '../constants/evolution';
 import { useFamilyStore } from './useFamilyStore';
 import { usePetStore } from './usePetStore';
 
 // ============================================================
-// DB helpers
+// 任务奖励结算
 // ============================================================
-async function dbRun(sql: string, params: any[] = []) {
-  const db = await getDatabase();
-  await db.runAsync(sql, params);
-}
-
-async function dbGetOne<T>(sql: string, params: any[] = []): Promise<T | null> {
-  const db = await getDatabase();
-  return (await db.getFirstAsync<T>(sql, params)) ?? null;
-}
-
-async function dbGetAll<T>(sql: string, params: any[] = []): Promise<T[]> {
-  const db = await getDatabase();
-  return (await db.getAllAsync<T>(sql, params)) ?? [];
-}
-
-/** 任务结算：孩子积分/星星、流水、宠物经验 */
 async function grantTaskCompletionRewards(childId: string, task: Task): Promise<void> {
   const points = task.points_reward ?? 0;
   const stars = task.stars_reward ?? 0;
@@ -54,7 +38,7 @@ async function grantTaskCompletionRewards(childId: string, task: Task): Promise<
   );
 
   const ts = new Date().toISOString();
-  if (points !== 0) {
+  if (points > 0) {
     await dbRun(
       `INSERT INTO point_records (id, child_id, rule_id, task_id, points_change, currency_type, reason, approved, created_at)
        VALUES (?, ?, NULL, ?, ?, 'points', ?, 1, ?)`,
@@ -70,12 +54,10 @@ async function grantTaskCompletionRewards(childId: string, task: Task): Promise<
   }
 
   await useFamilyStore.getState().refreshChildFromDb(childId);
-
-  // 宠物获得与积分等量的成长值（积分=经验，1:1）
   await usePetStore.getState().addPointsForChild(childId, points || 5);
 }
 
-/** 连续打卡跨越里程碑时发放奖励（与 STREAK_REWARDS 配置一致） */
+/** 连续打卡里程碑奖励 */
 async function grantStreakMilestoneRewards(childId: string, prevStreak: number, newStreak: number) {
   if (newStreak <= prevStreak) return;
   const ts = new Date().toISOString();
@@ -109,7 +91,6 @@ async function grantStreakMilestoneRewards(childId: string, prevStreak: number, 
     }
 
     await useFamilyStore.getState().refreshChildFromDb(childId);
-    // 连续打卡里程碑：宠物获得与积分等量的成长值
     await usePetStore.getState().addPointsForChild(childId, pts || 5);
   }
 }
@@ -125,7 +106,6 @@ interface TaskState {
   streaks: Streak[];
   isLoading: boolean;
 
-  // Actions
   loadTasks: (familyId: string, childId?: string) => Promise<void>;
   loadCategories: (familyId: string) => Promise<void>;
   loadTemplates: (familyId: string) => Promise<void>;
@@ -157,7 +137,7 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
   loadTasks: async (familyId: string, childId?: string) => {
     set({ isLoading: true });
     let sql = 'SELECT * FROM tasks WHERE family_id = ?';
-    const params: any[] = [familyId];
+    const params: (string | number | null)[] = [familyId];
     if (childId) {
       sql += ' AND assignee_id = ?';
       params.push(childId);
@@ -205,7 +185,8 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
     const task: Task = {
       ...taskInput,
       id,
-      status: taskInput.start_time && new Date(taskInput.start_time) > new Date() ? 'in_progress' : 'active',
+      // BUG-12 关联修复：新建任务默认 active，start_time 到达前也用 active
+      status: 'active',
       points_awarded: 0,
       created_at: now,
       completed_at: null,
@@ -232,7 +213,7 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
 
   updateTask: async (taskId: string, updates: Partial<Task>) => {
     const fields: string[] = [];
-    const values: any[] = [];
+    const values: (string | number | null)[] = [];
 
     const updateFields: (keyof Task)[] = ['title', 'description', 'category_id', 'points_reward', 'stars_reward',
       'deadline', 'start_time', 'repeat_type', 'repeat_config', 'confirm_mode',
@@ -241,7 +222,7 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
     for (const field of updateFields) {
       if (updates[field] !== undefined) {
         fields.push(`${field} = ?`);
-        values.push(updates[field]);
+        values.push(updates[field] as string | number | null);
       }
     }
 
@@ -259,6 +240,7 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
     set((state) => ({ tasks: state.tasks.filter((t) => t.id !== taskId) }));
   },
 
+  // BUG-01 修复：SQL 参数数量与占位符一致（3个?对应3个参数）
   submitTask: async (taskId: string, childId: string, proofData?: string) => {
     const { tasks } = get();
     const task = tasks.find((t) => t.id === taskId);
@@ -266,10 +248,10 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
 
     const now = new Date().toISOString();
 
-    // For auto-confirm tasks, award points immediately
     if (task.confirm_mode === 'auto') {
+      // BUG-01 修复：3个占位符对应3个参数
       await dbRun('UPDATE tasks SET status = ?, completed_at = ?, points_awarded = 1 WHERE id = ?', [
-        'completed', now, 1, taskId,
+        'completed', now, taskId,
       ]);
       const completion: TaskCompletion = {
         id: uuidv4(),
@@ -293,14 +275,11 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
         completions: [completion, ...state.completions],
       }));
 
-      // Update streak
       await get().updateStreak(childId, task.category_id ?? undefined);
       await grantTaskCompletionRewards(childId, task);
-
       return completion;
     }
 
-    // For parent/photo confirm, mark as submitted
     await dbRun('UPDATE tasks SET status = ?, completed_at = ? WHERE id = ?', ['submitted', now, taskId]);
 
     const completion: TaskCompletion = {
@@ -328,30 +307,33 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
     return completion;
   },
 
+  // BUG-05 修复：先读取 points_awarded 原值，再 UPDATE，再发奖
   approveTask: async (completionId: string) => {
     const now = new Date().toISOString();
-    await dbRun(
-      'UPDATE task_completions SET approved = 1, confirmed_at = ? WHERE id = ?',
-      [now, completionId]
-    );
 
+    // 先读取完成记录
     const completion = await dbGetOne<TaskCompletion>(
       'SELECT * FROM task_completions WHERE id = ?',
       [completionId]
     );
-    if (completion) {
-      const taskRow =
-        get().tasks.find((t) => t.id === completion.task_id) ??
-        (await dbGetOne<Task>('SELECT * FROM tasks WHERE id = ?', [completion.task_id]));
+    if (!completion) return;
 
-      await dbRun('UPDATE tasks SET status = ?, points_awarded = 1 WHERE id = ?', [
-        'completed', completion.task_id,
-      ]);
+    // 读取任务原始状态（判断是否已发过奖励）
+    const taskRow = await dbGetOne<Task>('SELECT * FROM tasks WHERE id = ?', [completion.task_id]);
+
+    // 更新完成记录和任务状态
+    await dbRun(
+      'UPDATE task_completions SET approved = 1, confirmed_at = ? WHERE id = ?',
+      [now, completionId]
+    );
+    await dbRun('UPDATE tasks SET status = ?, points_awarded = 1 WHERE id = ?', [
+      'completed', completion.task_id,
+    ]);
+
+    // BUG-05 修复：使用读取到的原始 points_awarded 判断，避免时序问题
+    if (taskRow && taskRow.points_awarded === 0) {
       await get().updateStreak(completion.child_id);
-
-      if (taskRow && taskRow.points_awarded === 0) {
-        await grantTaskCompletionRewards(completion.child_id, { ...taskRow, points_awarded: 1 });
-      }
+      await grantTaskCompletionRewards(completion.child_id, taskRow);
     }
 
     set((state) => ({
@@ -359,11 +341,12 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
         c.id === completionId ? { ...c, approved: 1, confirmed_at: now } : c
       ),
       tasks: state.tasks.map((t) =>
-        t.id === completion?.task_id ? { ...t, status: 'completed' as TaskStatus, points_awarded: 1 } : t
+        t.id === completion.task_id ? { ...t, status: 'completed' as TaskStatus, points_awarded: 1 } : t
       ),
     }));
   },
 
+  // BUG-13 修复：拒绝后回退到 'active' 而非 'in_progress'
   rejectTask: async (completionId: string) => {
     await dbRun('UPDATE task_completions SET approved = -1 WHERE id = ?', [completionId]);
 
@@ -372,7 +355,7 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
       [completionId]
     );
     if (completion) {
-      await dbRun('UPDATE tasks SET status = ? WHERE id = ?', ['in_progress', completion.task_id]);
+      await dbRun('UPDATE tasks SET status = ? WHERE id = ?', ['active', completion.task_id]);
     }
 
     set((state) => ({
@@ -380,7 +363,7 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
         c.id === completionId ? { ...c, approved: -1 } : c
       ),
       tasks: state.tasks.map((t) =>
-        t.id === completion?.task_id ? { ...t, status: 'in_progress' as TaskStatus } : t
+        t.id === completion?.task_id ? { ...t, status: 'active' as TaskStatus } : t
       ),
     }));
   },
@@ -424,13 +407,14 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
     return template;
   },
 
+  // BUG-12 修复：添加 'active' 状态到查询条件
   getTodayTasks: async (childId: string) => {
     const today = new Date().toISOString().split('T')[0];
     return dbGetAll<Task>(
       `SELECT * FROM tasks
        WHERE assignee_id = ?
-       AND (status = 'in_progress' OR status = 'submitted')
-       AND DATE(start_time) <= ?
+       AND (status = 'active' OR status = 'in_progress' OR status = 'submitted')
+       AND (start_time IS NULL OR DATE(start_time) <= ?)
        AND (deadline IS NULL OR DATE(deadline) >= ?)
        ORDER BY priority DESC, deadline ASC`,
       [childId, today, today]
@@ -458,7 +442,6 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
       [familyId, now]
     );
 
-    // Reload tasks to reflect changes
     const { tasks } = get();
     set({
       tasks: tasks.map((t) => {
@@ -475,8 +458,19 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
     });
   },
 
+  // BUG-07 修复：生成每日任务前先将前一天未完成的旧实例标记为 overdue
   generateDailyTasks: async (familyId: string) => {
     const today = new Date().toISOString().split('T')[0];
+
+    // 将昨天及以前未完成的每日任务实例标记为 overdue
+    await dbRun(
+      `UPDATE tasks SET status = 'overdue'
+       WHERE family_id = ? AND repeat_type = 'once'
+       AND status IN ('active', 'in_progress')
+       AND start_time IS NOT NULL AND DATE(start_time) < ?`,
+      [familyId, today]
+    );
+
     const recurringTasks = await dbGetAll<Task>(
       `SELECT * FROM tasks
        WHERE family_id = ? AND repeat_type != 'once' AND status != 'overdue'
@@ -485,27 +479,22 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
     );
 
     for (const template of recurringTasks) {
-      // Check if we already have an instance for today
       const existing = await dbGetOne<{ count: number }>(
         `SELECT COUNT(*) as count FROM task_completions
          WHERE task_id = ? AND DATE(completed_at) = ? AND approved IN (0, 1)`,
         [template.id, today]
       );
-
       if (existing && existing.count > 0) continue;
 
-      // Check if there's already an active instance
       const activeInstance = await dbGetOne<Task>(
         `SELECT * FROM tasks
-         WHERE family_id = ? AND status IN ('in_progress', 'submitted')
+         WHERE family_id = ? AND status IN ('active', 'in_progress', 'submitted')
          AND DATE(start_time) = ?
          AND title = ? AND assignee_id = ?`,
         [familyId, today, template.title, template.assignee_id]
       );
-
       if (activeInstance) continue;
 
-      // Check repeat schedule
       if (template.repeat_type === 'weekly' && template.repeat_config) {
         try {
           const config = JSON.parse(template.repeat_config);
@@ -516,7 +505,6 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
         }
       }
 
-      // Create today's instance
       const id = uuidv4();
       const todayStart = new Date();
       todayStart.setHours(7, 0, 0, 0);
@@ -527,7 +515,7 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
         `INSERT INTO tasks (id, family_id, category_id, title, description, points_reward, stars_reward,
           deadline, start_time, repeat_type, repeat_config, confirm_mode, overdue_penalty,
           assignee_id, priority, status, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'once', NULL, ?, ?, ?, ?, 'in_progress', ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'once', NULL, ?, ?, ?, ?, 'active', ?)`,
         [
           id, template.family_id, template.category_id, template.title, template.description,
           template.points_reward, template.stars_reward,
@@ -538,16 +526,17 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
       );
     }
 
-    // Reload tasks
     await get().loadTasks(familyId);
   },
 
+  // BUG-02 修复：categoryId 为 undefined 时传 null，正确匹配 IS NULL
   updateStreak: async (childId: string, categoryId?: string) => {
     const today = new Date().toISOString().split('T')[0];
+    const catIdParam = categoryId ?? null;
 
     const existing = await dbGetOne<Streak>(
-      'SELECT * FROM streaks WHERE child_id = ? AND (category_id IS NULL OR category_id = ?)',
-      [childId, categoryId ?? '']
+      'SELECT * FROM streaks WHERE child_id = ? AND category_id IS ?',
+      [childId, catIdParam]
     );
 
     if (existing) {
@@ -555,19 +544,15 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
       let newStreak = existing.current_streak;
       const prevStreak = existing.current_streak;
 
-      if (lastDate === today) {
-        // Already counted today
-        return existing;
-      }
+      if (lastDate === today) return existing;
 
-      // Check if yesterday
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
       const yesterdayStr = yesterday.toISOString().split('T')[0];
 
       if (lastDate === yesterdayStr) {
         newStreak += 1;
-      } else if (lastDate !== today) {
+      } else {
         newStreak = 1;
       }
 
@@ -590,7 +575,7 @@ export const useTaskStore = create<TaskState>()((set, get) => ({
       const streak: Streak = {
         id,
         child_id: childId,
-        category_id: categoryId ?? null,
+        category_id: catIdParam,
         current_streak: 1,
         best_streak: 1,
         last_completion_date: today,

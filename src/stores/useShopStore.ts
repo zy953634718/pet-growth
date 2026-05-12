@@ -1,26 +1,9 @@
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
 import { ShopItem, Purchase, PetEquipment, CurrencyType, SlotType, RedemptionStatus } from '../types';
+import { dbGetAll, dbGetOne, dbRun, dbRunTransaction } from '../db/helpers';
 import { getDatabase } from '../db/database';
 import { useFamilyStore } from './useFamilyStore';
-
-// ============================================================
-// DB helpers
-// ============================================================
-async function dbRun(sql: string, params: any[] = []) {
-  const db = await getDatabase();
-  await db.runAsync(sql, params);
-}
-
-async function dbGetAll<T>(sql: string, params: any[] = []): Promise<T[]> {
-  const db = await getDatabase();
-  return (await db.getAllAsync<T>(sql, params)) ?? [];
-}
-
-async function dbGetOne<T>(sql: string, params: any[] = []): Promise<T | null> {
-  const db = await getDatabase();
-  return (await db.getFirstAsync<T>(sql, params)) ?? null;
-}
 
 const COSMETIC_SLOTS: SlotType[] = ['hat', 'clothes', 'accessory', 'background', 'effect'];
 
@@ -29,23 +12,30 @@ function slotFromSubType(sub: string | null): SlotType | null {
   return COSMETIC_SLOTS.includes(sub as SlotType) ? (sub as SlotType) : null;
 }
 
+// BUG-04 修复：原子扣减货币，余额不足时 changes = 0
 async function deductForPurchase(childId: string, priceType: CurrencyType, amount: number, reason: string) {
   if (amount <= 0) return;
   const ts = new Date().toISOString();
   const rid = uuidv4();
+  const db = getDatabase();
+
   if (priceType === 'points') {
-    const row = await dbGetOne<{ current_points: number }>('SELECT current_points FROM children WHERE id = ?', [childId]);
-    if (!row || row.current_points < amount) throw new Error('积分不足');
-    await dbRun(`UPDATE children SET current_points = current_points - ? WHERE id = ?`, [amount, childId]);
+    const result = await db.runAsync(
+      `UPDATE children SET current_points = current_points - ? WHERE id = ? AND current_points >= ?`,
+      [amount, childId, amount]
+    );
+    if (result.changes === 0) throw new Error('积分不足');
     await dbRun(
       `INSERT INTO point_records (id, child_id, rule_id, task_id, points_change, currency_type, reason, approved, created_at)
        VALUES (?, ?, NULL, NULL, ?, 'points', ?, 1, ?)`,
       [rid, childId, -amount, reason, ts]
     );
   } else {
-    const row = await dbGetOne<{ current_stars: number }>('SELECT current_stars FROM children WHERE id = ?', [childId]);
-    if (!row || row.current_stars < amount) throw new Error('星星不足');
-    await dbRun(`UPDATE children SET current_stars = current_stars - ? WHERE id = ?`, [amount, childId]);
+    const result = await db.runAsync(
+      `UPDATE children SET current_stars = current_stars - ? WHERE id = ? AND current_stars >= ?`,
+      [amount, childId, amount]
+    );
+    if (result.changes === 0) throw new Error('星星不足');
     await dbRun(
       `INSERT INTO point_records (id, child_id, rule_id, task_id, points_change, currency_type, reason, approved, created_at)
        VALUES (?, ?, NULL, NULL, ?, 'stars', ?, 1, ?)`,
@@ -54,9 +44,6 @@ async function deductForPurchase(childId: string, priceType: CurrencyType, amoun
   }
 }
 
-// ============================================================
-// Generate 6-digit redeem code
-// ============================================================
 function generateRedeemCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
@@ -75,7 +62,6 @@ interface ShopState {
   equipments: PetEquipment[];
   isLoading: boolean;
 
-  // Actions
   loadItems: (familyId: string) => Promise<void>;
   loadPurchases: (childId: string) => Promise<void>;
   loadEquipments: (petId: string) => Promise<void>;
@@ -90,7 +76,7 @@ interface ShopState {
   getEquippedItems: (petId: string) => Promise<PetEquipment[]>;
 }
 
-export const useShopStore = create<ShopState>()((set, get) => ({
+export const useShopStore = create<ShopState>()((set) => ({
   items: [],
   purchases: [],
   equipments: [],
@@ -141,7 +127,7 @@ export const useShopStore = create<ShopState>()((set, get) => ({
 
   updateItem: async (itemId: string, updates: Partial<ShopItem>) => {
     const fields: string[] = [];
-    const values: any[] = [];
+    const values: (string | number | null)[] = [];
 
     const updateFields: (keyof ShopItem)[] = ['name', 'description', 'item_type', 'sub_type',
       'price_type', 'price', 'stock', 'image', 'rarity', 'parent_approval'];
@@ -149,7 +135,7 @@ export const useShopStore = create<ShopState>()((set, get) => ({
     for (const field of updateFields) {
       if (updates[field] !== undefined) {
         fields.push(`${field} = ?`);
-        values.push(updates[field]);
+        values.push(updates[field] as string | number | null);
       }
     }
 
@@ -167,6 +153,7 @@ export const useShopStore = create<ShopState>()((set, get) => ({
     set((state) => ({ items: state.items.filter((i) => i.id !== itemId) }));
   },
 
+  // BUG-04 修复：整个购买流程包裹在事务中，库存原子扣减
   purchaseItem: async (childId: string, itemId: string, opts?: { asParent?: boolean }) => {
     const item = await dbGetOne<ShopItem>('SELECT * FROM shop_items WHERE id = ?', [itemId]);
     if (!item) throw new Error('商品不存在');
@@ -175,19 +162,13 @@ export const useShopStore = create<ShopState>()((set, get) => ({
       throw new Error('该商品需由家长在家长端代为兑换');
     }
 
-    if (item.stock !== -1 && item.stock <= 0) {
-      throw new Error('该商品已售罄');
-    }
-
     let petIdForEquip: string | null = null;
     if (item.item_type === 'cosmetic') {
       const slot = slotFromSubType(item.sub_type);
       if (!slot) throw new Error('装扮类型无效');
-
       const pet = await dbGetOne<{ id: string }>('SELECT id FROM pets WHERE child_id = ?', [childId]);
       if (!pet) throw new Error('请先完成宠物档案');
       petIdForEquip = pet.id;
-
       const owned = await dbGetOne<{ id: string }>(
         'SELECT id FROM pet_equipments WHERE pet_id = ? AND item_id = ?',
         [pet.id, itemId]
@@ -196,51 +177,61 @@ export const useShopStore = create<ShopState>()((set, get) => ({
     }
 
     const reason = `商城兑换：${item.name}`;
-    await deductForPurchase(childId, item.price_type, item.price, reason);
-
     const isGift = item.item_type === 'gift';
     const now = new Date().toISOString();
-    const purchase: Purchase = {
-      id: uuidv4(),
-      child_id: childId,
-      item_id: itemId,
-      redeem_code: isGift ? generateRedeemCode() : null,
-      status: (isGift ? 'pending' : 'redeemed') as RedemptionStatus,
-      purchase_time: now,
-      redeemed_at: isGift ? null : now,
-    };
-
-    await dbRun(
-      `INSERT INTO purchases (id, child_id, item_id, redeem_code, status, purchase_time, redeemed_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [
-        purchase.id,
-        purchase.child_id,
-        purchase.item_id,
-        purchase.redeem_code,
-        purchase.status,
-        purchase.purchase_time,
-        purchase.redeemed_at,
-      ]
-    );
-
-    if (item.stock !== -1) {
-      await dbRun('UPDATE shop_items SET stock = stock - 1 WHERE id = ?', [itemId]);
-    }
-
+    const purchaseId = uuidv4();
+    const redeemCode = isGift ? generateRedeemCode() : null;
+    const status: RedemptionStatus = isGift ? 'pending' : 'redeemed';
     let newEquipment: PetEquipment | null = null;
+    const eqId = uuidv4();
+
+    await dbRunTransaction([
+      // 原子货币扣减
+      () => deductForPurchase(childId, item.price_type, item.price, reason),
+      // 原子库存扣减：库存为 -1 表示无限
+      async () => {
+        if (item.stock !== -1) {
+          const db = getDatabase();
+          const result = await db.runAsync(
+            'UPDATE shop_items SET stock = stock - 1 WHERE id = ? AND stock > 0',
+            [itemId]
+          );
+          if (result.changes === 0) throw new Error('该商品已售罄');
+        }
+      },
+      // 写入购买记录
+      () => dbRun(
+        `INSERT INTO purchases (id, child_id, item_id, redeem_code, status, purchase_time, redeemed_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [purchaseId, childId, itemId, redeemCode, status, now, isGift ? null : now]
+      ),
+      // 装扮类商品写入装备槽
+      async () => {
+        if (item.item_type === 'cosmetic' && petIdForEquip) {
+          const slot = slotFromSubType(item.sub_type)!;
+          await dbRun(
+            `INSERT INTO pet_equipments (id, pet_id, slot_type, item_id, equipped) VALUES (?, ?, ?, ?, 0)`,
+            [eqId, petIdForEquip, slot, itemId]
+          );
+        }
+      },
+    ]);
+
     if (item.item_type === 'cosmetic' && petIdForEquip) {
-      const slot = slotFromSubType(item.sub_type)!;
-      const eqId = uuidv4();
-      await dbRun(
-        `INSERT INTO pet_equipments (id, pet_id, slot_type, item_id, equipped)
-         VALUES (?, ?, ?, ?, 0)`,
-        [eqId, petIdForEquip, slot, itemId]
-      );
       newEquipment = await dbGetOne<PetEquipment>('SELECT * FROM pet_equipments WHERE id = ?', [eqId]);
     }
 
     await useFamilyStore.getState().refreshChildFromDb(childId);
+
+    const purchase: Purchase = {
+      id: purchaseId,
+      child_id: childId,
+      item_id: itemId,
+      redeem_code: redeemCode,
+      status,
+      purchase_time: now,
+      redeemed_at: isGift ? null : now,
+    };
 
     set((state) => ({
       purchases: [purchase, ...state.purchases],
@@ -267,18 +258,14 @@ export const useShopStore = create<ShopState>()((set, get) => ({
   },
 
   equipItem: async (petId: string, itemId: string, slotType: SlotType) => {
-    // Unequip current item in the same slot
     await dbRun(
       'UPDATE pet_equipments SET equipped = 0 WHERE pet_id = ? AND slot_type = ? AND equipped = 1',
       [petId, slotType]
     );
-
-    // Equip the new item
     await dbRun(
       'UPDATE pet_equipments SET equipped = 1 WHERE pet_id = ? AND item_id = ?',
       [petId, itemId]
     );
-
     set((state) => ({
       equipments: state.equipments.map((e) => {
         if (e.pet_id !== petId) return e;
@@ -301,7 +288,7 @@ export const useShopStore = create<ShopState>()((set, get) => ({
 
   getOwnedItems: async (petId: string, slotType?: SlotType) => {
     let sql = 'SELECT * FROM pet_equipments WHERE pet_id = ?';
-    const params: any[] = [petId];
+    const params: (string | number | null)[] = [petId];
     if (slotType) {
       sql += ' AND slot_type = ?';
       params.push(slotType);
