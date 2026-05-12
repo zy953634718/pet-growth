@@ -1,4 +1,4 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+# Learn more https://docs.github.com/en/getting-started/getting-started-with-git/ignoring-files
 
 # dependencies
 node_modules/
@@ -39,4 +39,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
-nul
+
+# local config / editor
+.claude/
