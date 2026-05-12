@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, SafeAreaView, TouchableOpacity, Modal, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import PointBadge from '@/components/PointBadge';
 import { useFamilyStore } from '@/stores/useFamilyStore';
 import { useShopStore } from '@/stores/useShopStore';
 import { usePetStore } from '@/stores/usePetStore';
 import { ShopItem, ITEM_TYPE_EMOJI } from '@/types';
+import { Colors, Typography, Spacing, BorderRadius, Shadows } from '@/theme';
+import Modal, { ModalStyles } from '@/components/Modal';
 
 type ShopTab = 'gift' | 'cosmetic' | 'privilege';
 
@@ -134,33 +137,34 @@ export default function ShopScreen() {
       </ScrollView>
 
       {/* 购买确认弹窗 */}
-      <Modal visible={!!selectedItem} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalEmoji}>
-              {selectedItem?.image || (selectedItem ? ITEM_TYPE_EMOJI[selectedItem.item_type] : '🎁')}
-            </Text>
-            <Text style={styles.modalTitle}>确认兑换</Text>
-            <Text style={styles.modalName}>{selectedItem?.name}</Text>
-            {selectedItem && (
-              <PointBadge type={selectedItem.price_type} amount={selectedItem.price} size="large" />
-            )}
+      <Modal
+        visible={!!selectedItem}
+        onClose={() => setSelectedItem(null)}
+        showCloseButton={false}
+        maxWidth={320}
+      >
+        <Text style={styles.modalEmoji}>
+          {selectedItem?.image || (selectedItem ? ITEM_TYPE_EMOJI[selectedItem.item_type] : '🎁')}
+        </Text>
+        <Text style={styles.modalSubtitle}>确认兑换</Text>
+        <Text style={styles.modalName}>{selectedItem?.name}</Text>
+        {selectedItem && (
+          <PointBadge type={selectedItem.price_type} amount={selectedItem.price} size="large" />
+        )}
 
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={styles.cancelModalBtn}
-                onPress={() => setSelectedItem(null)}
-              >
-                <Text style={styles.cancelModalText}>再想想</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.confirmModalBtn}
-                onPress={handlePurchase}
-              >
-                <Text style={styles.confirmModalText}>确认购买 ✨</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+        <View style={ModalStyles.buttonRow}>
+          <TouchableOpacity
+            style={ModalStyles.cancelButton}
+            onPress={() => setSelectedItem(null)}
+          >
+            <Text style={ModalStyles.cancelButtonText}>再想想</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={ModalStyles.confirmButton}
+            onPress={handlePurchase}
+          >
+            <Text style={ModalStyles.confirmButtonText}>确认购买 ✨</Text>
+          </TouchableOpacity>
         </View>
       </Modal>
     </SafeAreaView>
@@ -170,49 +174,46 @@ export default function ShopScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAFBFC',
+    backgroundColor: Colors.bgPrimary,
   },
   balanceBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 18,
-    paddingTop: 14,
-    paddingBottom: 10,
+    paddingHorizontal: Spacing.screenPadding,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.md,
   },
   headerTitle: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: '#333',
+    color: Colors.neutral900,
   },
   badgeRow: {
     flexDirection: 'row',
-    gap: 7,
+    gap: Spacing.sm,
   },
   tabRow: {
     flexDirection: 'row',
-    marginHorizontal: 18,
-    marginBottom: 12,
-    gap: 8,
-    padding: 4,
-    backgroundColor: '#F0EFEF',
-    borderRadius: 16,
+    marginHorizontal: Spacing.screenPadding,
+    marginBottom: Spacing.md,
+    gap: Spacing.sm,
+    padding: Spacing.xs,
+    backgroundColor: Colors.neutral200,
+    borderRadius: BorderRadius.xl,
   },
   tabBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 9,
-    borderRadius: 13,
-    gap: 5,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.lg,
+    gap: Spacing.xs,
   },
   tabBtnActive: {
-    backgroundColor: '#FFF',
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 2,
+    backgroundColor: Colors.bgCard,
+    ...Shadows.sm,
   },
   tabEmoji: {
     fontSize: 16,
@@ -220,28 +221,25 @@ const styles = StyleSheet.create({
   tabLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#999',
+    color: Colors.neutral400,
   },
   tabLabelActive: {
-    color: '#FF6B6B',
+    color: Colors.primary500,
   },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    paddingHorizontal: 14,
-    gap: 10,
-    paddingTop: 4,
+    paddingHorizontal: Spacing.screenPadding,
+    gap: Spacing.sm,
+    paddingTop: Spacing.xs,
   },
   itemCard: {
     width: '47%',
-    backgroundColor: '#FFF',
-    borderRadius: 16,
-    padding: 14,
+    backgroundColor: Colors.bgCard,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 1,
+    ...Shadows.sm,
   },
   itemDisabled: {
     opacity: 0.55,
@@ -250,10 +248,10 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: '#FFF9F5',
+    backgroundColor: Colors.primary50,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: Spacing.sm,
   },
   itemEmoji: {
     fontSize: 36,
@@ -261,18 +259,18 @@ const styles = StyleSheet.create({
   itemName: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#444',
-    marginBottom: 6,
+    color: Colors.neutral800,
+    marginBottom: Spacing.xs,
     textAlign: 'center',
   },
   priceRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: Spacing.xs,
   },
   notEnough: {
     fontSize: 10,
-    color: '#F44336',
+    color: Colors.error,
     fontWeight: '600',
   },
   emptyState: {
@@ -282,71 +280,29 @@ const styles = StyleSheet.create({
   },
   emptyIcon: {
     fontSize: 48,
-    marginBottom: 10,
+    marginBottom: Spacing.sm,
   },
   emptyText: {
     fontSize: 14,
-    color: '#CCC',
+    color: Colors.neutral300,
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 28,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 320,
-    backgroundColor: '#FFF',
-    borderRadius: 24,
-    padding: 28,
-    alignItems: 'center',
-  },
+  // 弹窗内特有样式
   modalEmoji: {
     fontSize: 56,
-    marginBottom: 10,
+    marginBottom: Spacing.sm,
+    textAlign: 'center',
   },
-  modalTitle: {
+  modalSubtitle: {
     fontSize: 17,
-    color: '#888',
-    marginBottom: 4,
+    color: Colors.neutral500,
+    marginBottom: Spacing.xs,
+    textAlign: 'center',
   },
   modalName: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 14,
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 16,
-    width: '100%',
-  },
-  cancelModalBtn: {
-    flex: 1,
-    paddingVertical: 13,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: '#DDD',
-    alignItems: 'center',
-  },
-  cancelModalText: {
-    fontSize: 15,
-    color: '#888',
-    fontWeight: '500',
-  },
-  confirmModalBtn: {
-    flex: 1,
-    paddingVertical: 13,
-    borderRadius: 14,
-    backgroundColor: '#FF6B6B',
-    alignItems: 'center',
-  },
-  confirmModalText: {
-    fontSize: 15,
-    color: '#FFF',
-    fontWeight: 'bold',
+    color: Colors.neutral900,
+    marginBottom: Spacing.md,
+    textAlign: 'center',
   },
 });
