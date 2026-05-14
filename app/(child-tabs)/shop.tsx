@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import PointBadge from '@/components/PointBadge';
 import { useFamilyStore } from '@/stores/useFamilyStore';
@@ -23,6 +23,17 @@ export default function ShopScreen() {
   const [tab, setTab] = useState<ShopTab>('gift');
   const [selectedItem, setSelectedItem] = useState<ShopItem | null>(null);
 
+  // 提示弹窗状态
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastTitle, setToastTitle] = useState('');
+  const [toastMessage, setToastMessage] = useState('');
+
+  const showToast = (title: string, message: string) => {
+    setToastTitle(title);
+    setToastMessage(message);
+    setToastVisible(true);
+  };
+
   useEffect(() => {
     if (currentFamily) {
       loadItems(currentFamily.id);
@@ -44,10 +55,10 @@ export default function ShopScreen() {
           await loadEquipments(pet.id);
         }
         setSelectedItem(null);
-        Alert.alert('成功', `已兑换「${itemSnapshot.name}」！`);
+        showToast('成功', `已兑换「${itemSnapshot.name}」！`);
       })
       .catch((err: Error) => {
-        Alert.alert('提示', err.message);
+        showToast('提示', err.message);
       });
   };
 
@@ -100,11 +111,11 @@ export default function ShopScreen() {
                 style={[styles.itemCard, !canAfford && styles.itemDisabled]}
                 onPress={() => {
                   if (needsParent) {
-                    Alert.alert('提示', '该商品需由家长在家长端代为兑换');
+                    showToast('提示', '该商品需由家长在家长端代为兑换');
                     return;
                   }
                   if (outOfStock) {
-                    Alert.alert('提示', '该商品已售罄');
+                    showToast('提示', '该商品已售罄');
                     return;
                   }
                   if (canAfford) setSelectedItem(item);
@@ -135,6 +146,25 @@ export default function ShopScreen() {
         )}
         <View style={{ height: 20 }} />
       </ScrollView>
+
+      {/* 提示弹窗 */}
+      <Modal
+        visible={toastVisible}
+        onClose={() => setToastVisible(false)}
+        title={toastTitle}
+        showCloseButton={false}
+        maxWidth={300}
+      >
+        <Text style={{ fontSize: 15, color: Colors.neutral600, textAlign: 'center', marginBottom: 20 }}>
+          {toastMessage}
+        </Text>
+        <TouchableOpacity
+          style={[ModalStyles.confirmButton, { marginTop: 4 }]}
+          onPress={() => setToastVisible(false)}
+        >
+          <Text style={ModalStyles.confirmButtonText}>知道了</Text>
+        </TouchableOpacity>
+      </Modal>
 
       {/* 购买确认弹窗 */}
       <Modal

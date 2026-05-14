@@ -74,6 +74,7 @@ interface ShopState {
   unequipItem: (equipmentId: string) => Promise<void>;
   getOwnedItems: (petId: string, slotType?: SlotType) => Promise<PetEquipment[]>;
   getEquippedItems: (petId: string) => Promise<PetEquipment[]>;
+  loadOwnedEquipments: (petId: string) => Promise<void>;
 }
 
 export const useShopStore = create<ShopState>()((set) => ({
@@ -101,7 +102,10 @@ export const useShopStore = create<ShopState>()((set) => ({
 
   loadEquipments: async (petId: string) => {
     const equipments = await dbGetAll<PetEquipment>(
-      'SELECT * FROM pet_equipments WHERE pet_id = ?',
+      `SELECT pe.*, si.name as item_name, si.image as item_image
+       FROM pet_equipments pe
+       LEFT JOIN shop_items si ON pe.item_id = si.id
+       WHERE pe.pet_id = ?`,
       [petId]
     );
     set({ equipments });
@@ -166,12 +170,18 @@ export const useShopStore = create<ShopState>()((set) => ({
     if (item.item_type === 'cosmetic') {
       const slot = slotFromSubType(item.sub_type);
       if (!slot) throw new Error('装扮类型无效');
-      const pet = await dbGetOne<{ id: string }>('SELECT id FROM pets WHERE child_id = ?', [childId]);
-      if (!pet) throw new Error('请先完成宠物档案');
-      petIdForEquip = pet.id;
+      // 查询活跃宠物（排除已保存到图鉴的），与 loadPet 逻辑一致
+      const allPets = await dbGetAll<{ id: string }>('SELECT id FROM pets WHERE child_id = ? ORDER BY created_at DESC', [childId]);
+      const collectedRows = await dbGetAll<{ pet_id: string }>(
+        'SELECT pet_id FROM pet_collection WHERE child_id = ?', [childId]
+      );
+      const collectedPetIds = new Set(collectedRows.map(r => r.pet_id));
+      const activePet = allPets.find(p => !collectedPetIds.has(p.id)) || null;
+      if (!activePet) throw new Error('请先完成宠物档案');
+      petIdForEquip = activePet.id;
       const owned = await dbGetOne<{ id: string }>(
         'SELECT id FROM pet_equipments WHERE pet_id = ? AND item_id = ?',
-        [pet.id, itemId]
+        [activePet.id, itemId]
       );
       if (owned) throw new Error('已拥有该装扮');
     }
@@ -205,12 +215,18 @@ export const useShopStore = create<ShopState>()((set) => ({
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [purchaseId, childId, itemId, redeemCode, status, now, isGift ? null : now]
       ),
-      // 装扮类商品写入装备槽
+      // 装扮类商品写入装备槽并自动穿戴（同槽位旧装备卸下）
       async () => {
         if (item.item_type === 'cosmetic' && petIdForEquip) {
           const slot = slotFromSubType(item.sub_type)!;
+          // 卸下同槽位已装备的旧装备
           await dbRun(
-            `INSERT INTO pet_equipments (id, pet_id, slot_type, item_id, equipped) VALUES (?, ?, ?, ?, 0)`,
+            'UPDATE pet_equipments SET equipped = 0 WHERE pet_id = ? AND slot_type = ? AND equipped = 1',
+            [petIdForEquip, slot]
+          );
+          // 新装备直接穿戴
+          await dbRun(
+            `INSERT INTO pet_equipments (id, pet_id, slot_type, item_id, equipped) VALUES (?, ?, ?, ?, 1)`,
             [eqId, petIdForEquip, slot, itemId]
           );
         }
@@ -218,7 +234,13 @@ export const useShopStore = create<ShopState>()((set) => ({
     ]);
 
     if (item.item_type === 'cosmetic' && petIdForEquip) {
-      newEquipment = await dbGetOne<PetEquipment>('SELECT * FROM pet_equipments WHERE id = ?', [eqId]);
+      newEquipment = await dbGetOne<PetEquipment>(
+        `SELECT pe.*, si.name as item_name, si.image as item_image
+         FROM pet_equipments pe
+         LEFT JOIN shop_items si ON pe.item_id = si.id
+         WHERE pe.id = ?`,
+        [eqId]
+      );
     }
 
     await useFamilyStore.getState().refreshChildFromDb(childId);
@@ -301,5 +323,17 @@ export const useShopStore = create<ShopState>()((set) => ({
       'SELECT * FROM pet_equipments WHERE pet_id = ? AND equipped = 1',
       [petId]
     );
+  },
+
+  loadOwnedEquipments: async (petId: string) => {
+    const equipments = await dbGetAll<PetEquipment>(
+      `SELECT pe.*, si.name as item_name, si.image as item_image
+       FROM pet_equipments pe
+       LEFT JOIN shop_items si ON pe.item_id = si.id
+       WHERE pe.pet_id = ?
+       ORDER BY pe.slot_type, pe.equipped DESC`,
+      [petId]
+    );
+    set({ equipments });
   },
 }));

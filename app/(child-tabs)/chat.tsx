@@ -1,6 +1,8 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, Keyboard } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import * as Speech from 'expo-speech';
 import { useFamilyStore } from '@/stores/useFamilyStore';
 import { usePetStore } from '@/stores/usePetStore';
 import { useAIStore } from '@/stores/useAIStore';
@@ -8,13 +10,19 @@ import { getStageInfo, getSpeciesInfo } from '@/constants/evolution';
 import PetAvatar from '@/components/PetAvatar';
 
 import { Colors, Typography, Spacing, BorderRadius, Shadows } from '@/theme';
+import Modal from '@/components/Modal';
 
 export default function ChatScreen() {
-  const scrollRef = React.useRef<any>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const inputRef = useRef<TextInput>(null);
   const [inputText, setInputText] = useState('');
+  const [inputHeight, setInputHeight] = useState(40);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalMessage, setModalMessage] = useState('');
   const { currentChild, currentFamily } = useFamilyStore();
   const { pet } = usePetStore();
-  const { messages, isLoading, isOnline, sendMessage, loadHistory, loadConfig, loadSafetyConfig } = useAIStore();
+  const { messages, isLoading, isOnline, sendMessage, loadHistory, loadConfig, loadSafetyConfig, safetyConfig } = useAIStore();
 
   useEffect(() => {
     if (currentFamily?.id) {
@@ -29,15 +37,24 @@ export default function ChatScreen() {
     }
   }, [pet?.id, loadHistory]);
 
+  useEffect(() => {
+    return () => { Speech.stop(); };
+  }, []);
+
   const handleSend = async () => {
     if (!inputText.trim() || !pet?.id || !currentChild) return;
+
+    const text = inputText.trim();
+    setInputText('');
+    setInputHeight(40);
+    Keyboard.dismiss();
 
     const speciesEmoji = getSpeciesInfo(pet.species_id).emoji;
 
     try {
-      await sendMessage(
+      const reply = await sendMessage(
         pet.id,
-        inputText.trim(),
+        text,
         pet.name,
         speciesEmoji,
         currentChild.name,
@@ -46,9 +63,15 @@ export default function ChatScreen() {
         pet.mood_type,
         pet.health_type
       );
-      setInputText('');
+
+      if (safetyConfig?.enable_voice === 1 && reply) {
+        Speech.stop();
+        Speech.speak(reply, { language: 'zh-CN', rate: 0.9, pitch: 1.1 });
+      }
     } catch (e: any) {
-      Alert.alert('发送失败', e.message || '请稍后再试');
+      setModalTitle('发送失败');
+      setModalMessage(e.message || '请稍后再试');
+      setModalVisible(true);
     }
   };
 
@@ -78,7 +101,9 @@ export default function ChatScreen() {
         </View>
         <TouchableOpacity style={styles.settingsBtn} onPress={() => {
           if (!isOnline) {
-            Alert.alert('离线模式', '当前使用预设回复，配置 API Key 后可启用在线对话');
+            setModalTitle('离线模式');
+            setModalMessage('当前使用预设回复，配置 API Key 后可启用在线对话');
+            setModalVisible(true);
           }
         }}>
           <Text style={styles.settingsIcon}>⚙️</Text>
@@ -87,9 +112,10 @@ export default function ChatScreen() {
 
       {/* 聊天消息区 */}
       <ScrollView
-        ref={(ref) => { scrollRef.current = ref; }}
+        ref={scrollRef}
         contentContainerStyle={styles.messageList}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         onContentSizeChange={() => {
           scrollRef.current?.scrollToEnd({ animated: true });
         }}
@@ -145,26 +171,53 @@ export default function ChatScreen() {
       </ScrollView>
 
       {/* 输入区域 */}
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      >
         <View style={styles.inputArea}>
           <TextInput
-            style={styles.textInput}
+            ref={inputRef}
+            style={[styles.textInput, { height: Math.max(40, Math.min(inputHeight, 100)) }]}
             placeholder="跟小团子说点什么..."
             placeholderTextColor={Colors.neutral400}
             value={inputText}
             onChangeText={setInputText}
-            multiline={false}
+            multiline
             maxLength={200}
+            returnKeyType="send"
+            blurOnSubmit={false}
+            onSubmitEditing={handleSend}
+            onContentSizeChange={(e) => {
+              setInputHeight(e.nativeEvent.contentSize.height + 12);
+            }}
           />
           <TouchableOpacity
-            style={[styles.sendBtn, !inputText.trim() && styles.sendBtnDisabled]}
+            style={[styles.sendBtn, (!inputText.trim() || isLoading) && styles.sendBtnDisabled]}
             onPress={handleSend}
-            disabled={!inputText.trim()}
+            disabled={!inputText.trim() || isLoading}
+            activeOpacity={0.75}
           >
-            <Text style={styles.sendIcon}>➤</Text>
+            {isLoading
+              ? <Ionicons name="ellipsis-horizontal" size={18} color={Colors.bgCard} />
+              : <Ionicons name="send" size={18} color={Colors.bgCard} />
+            }
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      {/* 提示弹窗 */}
+      <Modal visible={modalVisible} onClose={() => setModalVisible(false)} title={modalTitle}>
+        <Text style={{ fontSize: 15, color: Colors.neutral600, textAlign: 'center', marginBottom: 20 }}>
+          {modalMessage}
+        </Text>
+        <TouchableOpacity
+          style={{ backgroundColor: Colors.primary500, paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}
+          onPress={() => setModalVisible(false)}
+        >
+          <Text style={{ color: Colors.neutral0, fontSize: 15, fontWeight: '700' }}>知道了</Text>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -293,9 +346,10 @@ const styles = StyleSheet.create({
   },
   inputArea: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
+    paddingVertical: Spacing.sm + 2,
+    paddingBottom: Spacing.md,
     backgroundColor: Colors.bgCard,
     borderTopWidth: 1,
     borderTopColor: Colors.neutral200,
@@ -306,24 +360,22 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.neutral100,
     borderRadius: BorderRadius['3xl'],
     paddingHorizontal: Spacing[4],
-    paddingVertical: Spacing.sm,
-    fontSize: Typography.base + 1,
+    paddingVertical: Spacing.sm + 2,
+    fontSize: Typography.base,
     color: Colors.neutral900,
-    maxHeight: Spacing[5],
+    lineHeight: Typography.base + 6,
+    textAlignVertical: 'center',
   },
   sendBtn: {
-    width: Spacing[5] + 2,
-    height: Spacing[5] + 2,
-    borderRadius: (Spacing[5] + 2) / 2,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: Colors.primary500,
     alignItems: 'center',
     justifyContent: 'center',
+    ...Shadows.xs,
   },
   sendBtnDisabled: {
     backgroundColor: Colors.neutral300,
-  },
-  sendIcon: {
-    fontSize: Typography.base + 6,
-    color: Colors.bgCard,
   },
 });

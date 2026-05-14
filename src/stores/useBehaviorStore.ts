@@ -6,7 +6,7 @@ import {
   PointRecord,
   CurrencyType,
 } from '../types';
-import { dbGetAll, dbRun } from '../db/helpers';
+import { dbGetAll, dbRun, dbRunTransaction } from '../db/helpers';
 
 // ============================================================
 // Store interface
@@ -29,7 +29,8 @@ interface BehaviorState {
     childId: string,
     ruleId: string,
     reason: string,
-    autoApprove?: boolean
+    autoApprove?: boolean,
+    customPoints?: number
   ) => Promise<PointRecord>;
   approveRecord: (recordId: string, approved: boolean) => Promise<void>;
   getTodayRecords: (childId: string) => Promise<PointRecord[]>;
@@ -138,15 +139,17 @@ export const useBehaviorStore = create<BehaviorState>()((set, get) => ({
     set((state) => ({ rules: state.rules.filter((r) => r.id !== ruleId) }));
   },
 
-  recordBehavior: async (childId: string, ruleId: string, reason: string, autoApprove = true) => {
+  recordBehavior: async (childId: string, ruleId: string, reason: string, autoApprove = true, customPoints?: number) => {
     const { rules } = get();
     const rule = rules.find((r) => r.id === ruleId);
     if (!rule) throw new Error('Rule not found');
 
+    const points = customPoints ?? rule.points;
+
     // Check daily limit (only applies to positive-point rules)
-    if (rule.daily_limit > 0 && rule.points > 0) {
+    if (rule.daily_limit > 0 && points > 0) {
       const todayPoints = await get().getTodayPointsForRule(childId, ruleId);
-      if (todayPoints + rule.points > rule.daily_limit) {
+      if (todayPoints + points > rule.daily_limit) {
         throw new Error('已达到今日该行为积分上限');
       }
     }
@@ -157,18 +160,37 @@ export const useBehaviorStore = create<BehaviorState>()((set, get) => ({
       child_id: childId,
       rule_id: ruleId,
       task_id: null,
-      points_change: rule.points,
+      points_change: points,
       currency_type: 'points' as CurrencyType,
       reason: reason || rule.name,
       approved,
       created_at: new Date().toISOString(),
     };
 
-    await dbRun(
-      `INSERT INTO point_records (id, child_id, rule_id, points_change, currency_type, reason, approved)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [record.id, record.child_id, record.rule_id, record.points_change, record.currency_type, record.reason, record.approved]
-    );
+    // 使用事务保证积分一致性
+    await dbRunTransaction([
+      async () => {
+        await dbRun(
+          `INSERT INTO point_records (id, child_id, rule_id, points_change, currency_type, reason, approved)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [record.id, record.child_id, record.rule_id, record.points_change, record.currency_type, record.reason, record.approved]
+        );
+
+        // 仅在自动审批通过时更新孩子积分和宠物经验
+        if (approved === 1) {
+          await dbRun(
+            `UPDATE children SET current_points = current_points + ?, total_points = total_points + ? WHERE id = ?`,
+            [points, points, childId]
+          );
+        }
+      },
+    ]);
+
+    // 审批通过时更新宠物经验值
+    if (approved === 1 && points > 0) {
+      const { usePetStore } = require('./usePetStore');
+      await usePetStore.getState().addPointsForChild(childId, points);
+    }
 
     set((state) => ({
       records: [record, ...state.records],
@@ -178,8 +200,34 @@ export const useBehaviorStore = create<BehaviorState>()((set, get) => ({
   },
 
   approveRecord: async (recordId: string, approved: boolean) => {
+    // 先查出原记录，获取积分值和 child_id
+    const { records } = get();
+    const record = records.find((r) => r.id === recordId);
+    if (!record) throw new Error('Record not found');
+    if (record.approved !== 0) return; // 只处理待审批的记录
+
     const approvedVal = approved ? 1 : -1;
-    await dbRun('UPDATE point_records SET approved = ? WHERE id = ?', [approvedVal, recordId]);
+
+    await dbRunTransaction([
+      async () => {
+        await dbRun('UPDATE point_records SET approved = ? WHERE id = ?', [approvedVal, recordId]);
+
+        // 审批通过时更新孩子积分
+        if (approved) {
+          await dbRun(
+            `UPDATE children SET current_points = current_points + ?, total_points = total_points + ? WHERE id = ?`,
+            [record.points_change, record.points_change, record.child_id]
+          );
+        }
+      },
+    ]);
+
+    // 审批通过且正积分时更新宠物经验值
+    if (approved && record.points_change > 0) {
+      const { usePetStore } = require('./usePetStore');
+      await usePetStore.getState().addPointsForChild(record.child_id, record.points_change);
+    }
+
     set((state) => ({
       records: state.records.map((r) =>
         r.id === recordId ? { ...r, approved: approvedVal } : r
@@ -203,8 +251,8 @@ export const useBehaviorStore = create<BehaviorState>()((set, get) => ({
     const rows = await dbGetAll<{ total: number }>(
       `SELECT COALESCE(SUM(points_change), 0) as total
        FROM point_records
-       WHERE child_id = ? AND rule_id = ? AND approved >= 0
-       AND DATE(created_at) = ?`,
+      WHERE child_id = ? AND rule_id = ? AND approved = 1
+      AND DATE(created_at) = ?`,
       [childId, ruleId, today]
     );
     return rows[0]?.total ?? 0;
@@ -223,11 +271,29 @@ export const useBehaviorStore = create<BehaviorState>()((set, get) => ({
       created_at: new Date().toISOString(),
     };
 
-    await dbRun(
-      `INSERT INTO point_records (id, child_id, rule_id, task_id, points_change, currency_type, reason, approved)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [record.id, record.child_id, record.rule_id, record.task_id, record.points_change, record.currency_type, record.reason, record.approved]
-    );
+    await dbRunTransaction([
+      async () => {
+        await dbRun(
+          `INSERT INTO point_records (id, child_id, rule_id, task_id, points_change, currency_type, reason, approved)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [record.id, record.child_id, record.rule_id, record.task_id, record.points_change, record.currency_type, record.reason, record.approved]
+        );
+
+        // 更新孩子积分（points 类型的才更新 current_points）
+        if (currency === 'points') {
+          await dbRun(
+            `UPDATE children SET current_points = current_points + ?, total_points = total_points + ? WHERE id = ?`,
+            [points, points, childId]
+          );
+        }
+      },
+    ]);
+
+    // 正积分时更新宠物经验值
+    if (currency === 'points' && points > 0) {
+      const { usePetStore } = require('./usePetStore');
+      await usePetStore.getState().addPointsForChild(childId, points);
+    }
 
     set((state) => ({
       records: [record, ...state.records],

@@ -1,8 +1,8 @@
 import { v4 as uuidv4 } from 'uuid';
 import { create } from 'zustand';
-import { getPointsToNextLevel, getStageForLevel, getStageInfo } from '../constants/evolution';
+import { getPointsToNextLevel, getStageForLevel, getStageInfo, PET_SPECIES } from '../constants/evolution';
 import { dbGetAll, dbGetOne, dbRun, dbRunTransaction } from '../db/helpers';
-import { EvolutionHistory, HealthType, MoodType, Pet, PetEvolutionStage } from '../types';
+import { CollectionEntry, EvolutionHistory, HealthType, MoodType, Pet, PetEvolutionStage } from '../types';
 import { useFamilyStore } from './useFamilyStore';
 
 /** 照料消耗（与设计文档一致） */
@@ -70,6 +70,7 @@ function diffHours(from: string, to?: string): number {
 interface PetState {
   pet: Pet | null;
   evolutionHistory: PetEvolutionStage[];
+  collection: CollectionEntry[];
   isLoading: boolean;
   justEvolved: boolean;
   evolvedToStage: number;
@@ -90,28 +91,41 @@ interface PetState {
   returnFromRunaway: (usePoints: boolean) => Promise<boolean>;
   clearEvolvedFlag: () => void;
   addPointsForChild: (childId: string, amount: number) => Promise<void>;
+  loadCollection: (childId: string) => Promise<void>;
+  saveToCollection: (childId: string) => Promise<void>;
+  adoptNewPet: (childId: string, speciesId: string, petName: string) => Promise<Pet>;
 }
 
 export const usePetStore = create<PetState>()((set, get) => ({
   pet: null,
   evolutionHistory: [],
+  collection: [],
   isLoading: false,
   justEvolved: false,
   evolvedToStage: 0,
 
   loadPet: async (childId: string) => {
     set({ isLoading: true });
-    const pet = await dbGetOne<Pet>('SELECT * FROM pets WHERE child_id = ?', [childId]);
-    if (pet) {
+    // 查询所有宠物和已归档的 pet_id
+    const allPets = await dbGetAll<Pet>('SELECT * FROM pets WHERE child_id = ? ORDER BY created_at DESC', [childId]);
+    const collectedRows = await dbGetAll<{ pet_id: string }>(
+      'SELECT pet_id FROM pet_collection WHERE child_id = ?', [childId]
+    );
+    const collectedPetIds = new Set(collectedRows.map(r => r.pet_id));
+
+    // 活跃宠物 = 未归档的宠物中最新创建的
+    const activePet = allPets.find(p => !collectedPetIds.has(p.id)) || null;
+
+    if (activePet) {
       const history = await dbGetAll<EvolutionHistory>(
         'SELECT * FROM evolution_history WHERE pet_id = ? ORDER BY stage',
-        [pet.id]
+        [activePet.id]
       );
       const evolutionHistory: PetEvolutionStage[] = history.map((h) => ({
         ...getStageInfo(h.stage),
         stage: h.stage,
       }));
-      set({ pet, evolutionHistory, isLoading: false });
+      set({ pet: activePet, evolutionHistory, isLoading: false });
     } else {
       set({ pet: null, evolutionHistory: [], isLoading: false });
     }
@@ -558,7 +572,13 @@ export const usePetStore = create<PetState>()((set, get) => ({
 
   addPointsForChild: async (childId: string, amount: number) => {
     if (amount <= 0) return;
-    const pet = await dbGetOne<Pet>('SELECT * FROM pets WHERE child_id = ?', [childId]);
+    // 查询活跃宠物（排除已保存到图鉴的），与 loadPet 逻辑一致
+    const allPets = await dbGetAll<Pet>('SELECT * FROM pets WHERE child_id = ? ORDER BY created_at DESC', [childId]);
+    const collectedRows = await dbGetAll<{ pet_id: string }>(
+      'SELECT pet_id FROM pet_collection WHERE child_id = ?', [childId]
+    );
+    const collectedPetIds = new Set(collectedRows.map(r => r.pet_id));
+    const pet = allPets.find(p => !collectedPetIds.has(p.id)) || null;
     if (!pet || pet.ran_away_at) return;
 
     let newPoints = pet.current_points + amount;
@@ -608,5 +628,66 @@ export const usePetStore = create<PetState>()((set, get) => ({
         set({ justEvolved: true, evolvedToStage: finalStage });
       }
     }
+  },
+
+  // ============================================================
+  // 图鉴相关方法
+  // ============================================================
+
+  loadCollection: async (childId: string) => {
+    const entries = await dbGetAll<CollectionEntry>(
+      'SELECT * FROM pet_collection WHERE child_id = ? ORDER BY saved_at DESC',
+      [childId]
+    );
+    set({ collection: entries });
+  },
+
+  saveToCollection: async (childId: string) => {
+    const { pet } = get();
+    if (!pet || pet.level < 8) throw new Error('宠物尚未满级');
+
+    const species = PET_SPECIES.find(s => s.id === pet.species_id);
+    if (!species) throw new Error('物种信息不存在');
+
+    const id = uuidv4();
+    const now = new Date().toISOString();
+    await dbRun(
+      `INSERT INTO pet_collection (id, child_id, pet_id, species_id, pet_name, species_emoji, species_display_name, saved_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, childId, pet.id, pet.species_id, pet.name, species.emoji, species.name, now]
+    );
+
+    // 刷新图鉴列表和当前宠物状态
+    await get().loadCollection(childId);
+    await get().loadPet(childId);
+  },
+
+  adoptNewPet: async (childId: string, speciesId: string, petName: string) => {
+    const { pet } = get();
+    if (pet) throw new Error('请先将当前宠物保存到图鉴');
+
+    // 原子扣减 100 积分
+    const db = (await import('../db/database')).getDatabase();
+    const result = await db.runAsync(
+      'UPDATE children SET current_points = current_points - 100 WHERE id = ? AND current_points >= 100',
+      [childId]
+    );
+    if (result.changes === 0) throw new Error('积分不足，需要 100 积分');
+
+    // 记录积分扣减
+    const ts = new Date().toISOString();
+    await dbRun(
+      `INSERT INTO point_records (id, child_id, rule_id, task_id, points_change, currency_type, reason, approved, created_at)
+       VALUES (?, ?, NULL, NULL, ?, 'points', ?, 1, ?)`,
+      [uuidv4(), childId, -100, '领取新宠物', ts]
+    );
+
+    // 创建新宠物
+    const newPet = await get().createPet(childId, speciesId, petName);
+
+    // 刷新孩子数据（积分已扣减）
+    await useFamilyStore.getState().refreshChildFromDb(childId);
+
+    return newPet;
   },
 }));

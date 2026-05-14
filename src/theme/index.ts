@@ -2,7 +2,7 @@
 // 萌宠成长记 - 主题统一导出
 // ============================================================
 
-export { Colors, Typography, Spacing, BorderRadius, Shadows, Breakpoints, TouchTarget, TabBarConfig } from './tokens';
+export { Colors, CategoryPalette, Typography, Spacing, BorderRadius, Shadows, Breakpoints, TouchTarget, TabBarConfig } from './tokens';
 export { useResponsive, scale, moderateScaleStatic, fontSizeStatic, clamp } from './responsive';
 export {
   ScreenContainer, ScrollContent, CardStyle, CardShadow,

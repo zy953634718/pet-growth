@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import TaskCard from '@/components/TaskCard';
@@ -8,11 +8,21 @@ import { useFamilyStore } from '@/stores/useFamilyStore';
 import { useTaskStore } from '@/stores/useTaskStore';
 import { Task, TaskStatus } from '@/types';
 import { Colors, Typography, Spacing, BorderRadius } from '@/theme';
+import Modal from '@/components/Modal';
 
 type TabType = 'today' | 'all';
 
 export default function TaskListScreen() {
   const [tab, setTab] = useState<TabType>('today');
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalMessage, setModalMessage] = useState('');
+
+  const showModal = useCallback((title: string, message: string) => {
+    setModalTitle(title);
+    setModalMessage(message);
+    setModalVisible(true);
+  }, []);
 
   const { currentChild, currentFamily } = useFamilyStore();
   const {
@@ -72,7 +82,7 @@ export default function TaskListScreen() {
       if (task.confirm_mode === 'photo') {
         const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (!perm.granted) {
-          Alert.alert('提示', '需要相册权限才能上传任务照片');
+          showModal('提示', '需要相册权限才能上传任务照片');
           return;
         }
         const result = await ImagePicker.launchImageLibraryAsync({
@@ -95,7 +105,7 @@ export default function TaskListScreen() {
         await loadTasks(currentFamily.id, currentChild.id);
         await loadCompletions(currentChild.id);
       } catch (err: unknown) {
-        Alert.alert('提示', err instanceof Error ? err.message : '提交失败');
+        showModal('提示', err instanceof Error ? err.message : '提交失败');
       }
     },
     [currentChild, currentFamily, tasks, submitTask, loadTasks, loadCompletions]
@@ -110,7 +120,7 @@ export default function TaskListScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
-          <Text style={{ fontSize: 16, color: Colors.neutral400 }}>请先选择孩子档案</Text>
+          <Text style={styles.emptyMessage}>请先选择孩子档案</Text>
         </View>
       </SafeAreaView>
     );
@@ -145,7 +155,7 @@ export default function TaskListScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {isLoading ? (
           <View style={styles.loadingContainer}>
-            <Text style={{ fontSize: 16, color: Colors.neutral400 }}>加载中...</Text>
+            <Text style={styles.emptyMessage}>加载中...</Text>
           </View>
         ) : (
           <>
@@ -153,7 +163,7 @@ export default function TaskListScreen() {
             <Text style={styles.sectionLabel}>🔥 进行中 ({activeTasks.length})</Text>
             {activeTasks.length === 0 ? (
               <View style={styles.emptyHint}>
-                <Text style={{ fontSize: 14, color: Colors.neutral300 }}>暂无进行中的任务</Text>
+                <Text style={styles.emptyHintText}>暂无进行中的任务</Text>
               </View>
             ) : (
               activeTasks.map((task) => (
@@ -169,7 +179,7 @@ export default function TaskListScreen() {
             <Text style={styles.sectionLabel}>✅ 已完成 ({doneTasks.length})</Text>
             {doneTasks.length === 0 ? (
               <View style={styles.emptyHint}>
-                <Text style={{ fontSize: 14, color: Colors.neutral300 }}>暂无已完成的任务</Text>
+                <Text style={styles.emptyHintText}>暂无已完成的任务</Text>
               </View>
             ) : (
               doneTasks.map((task) => (
@@ -196,8 +206,20 @@ export default function TaskListScreen() {
             </View>
           </>
         )}
-        <View style={{ height: 20 }} />
+        <View style={styles.bottomSpacer} />
       </ScrollView>
+      {/* 提示弹窗 */}
+      <Modal visible={modalVisible} onClose={() => setModalVisible(false)} title={modalTitle}>
+        <Text style={styles.modalMessage}>
+          {modalMessage}
+        </Text>
+        <TouchableOpacity
+          style={styles.modalBtn}
+          onPress={() => setModalVisible(false)}
+        >
+          <Text style={styles.modalBtnText}>知道了</Text>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -207,40 +229,68 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.bgPrimary,
   },
+  emptyMessage: {
+    fontSize: Typography.lg,
+    color: Colors.neutral400,
+  },
+  emptyHintText: {
+    fontSize: Typography.base,
+    color: Colors.neutral300,
+  },
+  bottomSpacer: {
+    height: Spacing[5],
+  },
+  modalMessage: {
+    fontSize: Typography.base + 1,
+    color: Colors.neutral600,
+    textAlign: 'center',
+    marginBottom: Spacing[5],
+  },
+  modalBtn: {
+    backgroundColor: Colors.primary500,
+    paddingVertical: Spacing[3],
+    borderRadius: BorderRadius.md,
+    alignItems: 'center',
+  },
+  modalBtnText: {
+    color: Colors.neutral0,
+    fontSize: Typography.base + 1,
+    fontWeight: '700',
+  },
   header: {
-    paddingHorizontal: 18,
-    paddingTop: 16,
-    paddingBottom: 10,
+    paddingHorizontal: Spacing['4.5'],
+    paddingTop: Spacing[4],
+    paddingBottom: Spacing['2.5'],
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
   title: {
-    fontSize: 22,
+    fontSize: Typography['2xl'] + 2,
     fontWeight: 'bold',
     color: Colors.neutral900,
   },
   dateBox: {
-    backgroundColor: '#F0F0F0',
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 10,
+    backgroundColor: Colors.borderDivider,
+    paddingHorizontal: Spacing[3],
+    paddingVertical: Spacing['1.5'] - 1,
+    borderRadius: BorderRadius.md,
   },
   date: {
-    fontSize: 13,
+    fontSize: Typography.sm + 1,
     color: Colors.neutral600,
     fontWeight: '500',
   },
   tabRow: {
     flexDirection: 'row',
-    marginHorizontal: 18,
-    marginBottom: 14,
-    gap: 10,
+    marginHorizontal: Spacing['4.5'],
+    marginBottom: Spacing['3.5'],
+    gap: Spacing['2.5'],
   },
   tab: {
     flex: 1,
-    paddingVertical: 9,
-    borderRadius: 12,
+    paddingVertical: Spacing['2.5'] - 1,
+    borderRadius: BorderRadius.button,
     alignItems: 'center',
     backgroundColor: Colors.neutral200,
   },
@@ -248,7 +298,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary500,
   },
   tabText: {
-    fontSize: 14,
+    fontSize: Typography.base,
     fontWeight: '600',
     color: Colors.neutral500,
   },
@@ -256,45 +306,45 @@ const styles = StyleSheet.create({
     color: Colors.bgCard,
   },
   scrollContent: {
-    paddingHorizontal: 18,
+    paddingHorizontal: Spacing['4.5'],
   },
   sectionLabel: {
-    fontSize: 15,
+    fontSize: Typography.base + 1,
     fontWeight: '700',
     color: Colors.neutral800,
-    marginTop: 16,
-    marginBottom: 8,
+    marginTop: Spacing[4],
+    marginBottom: Spacing[2],
   },
   emptyHint: {
     alignItems: 'center',
-    paddingVertical: 20,
+    paddingVertical: Spacing[5],
   },
   summary: {
     backgroundColor: Colors.bgCard,
-    borderRadius: 16,
-    padding: 18,
-    marginTop: 16,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing['4.5'],
+    marginTop: Spacing[4],
   },
   summaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: Spacing[2],
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: Colors.borderDivider,
   },
   summaryLabel: {
-    fontSize: 14,
+    fontSize: Typography.base,
     color: Colors.neutral600,
   },
   summaryValue: {
-    fontSize: 14,
+    fontSize: Typography.base,
     fontWeight: '700',
     color: Colors.secondary300,
   },
   pointsRow: {},
   streakValue: {
-    fontSize: 15,
+    fontSize: Typography.base + 1,
     fontWeight: '700',
     color: Colors.primary500,
   },
@@ -302,6 +352,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 40,
+    paddingTop: Spacing[10],
   },
 });

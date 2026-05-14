@@ -38,7 +38,7 @@ export default function RootLayout() {
             resolve();
           }, 5000);
         });
-        const { currentFamily, isSetupComplete, resetFamily } = useFamilyStore.getState();
+        const { currentFamily, isSetupComplete, resetFamily, loadFamily } = useFamilyStore.getState();
         if (currentFamily?.id && isSetupComplete) {
           const row = await getDatabase().getFirstAsync<{ id: string }>(
             'SELECT id FROM family WHERE id = ?',
@@ -48,6 +48,8 @@ export default function RootLayout() {
             console.warn('[_layout] Family not found in DB, resetting session');
             resetFamily();
             await clearFamilySessionPersist();
+          } else {
+            await loadFamily(currentFamily.id);
           }
         }
       } catch (e) {

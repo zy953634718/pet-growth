@@ -490,9 +490,11 @@ async function callLLM(
   const { model_provider, model_name, api_key_encrypted, temperature, max_tokens } = config;
 
   // Build messages array
+  // DeepSeek v4-flash 不接受 developer role，统一使用 system
+  const systemRole = 'system';
   const messages: { role: string; content: string }[] = [
-    { role: 'system', content: systemPrompt },
-    ...history.slice(-10), // Last 10 turns
+    { role: systemRole, content: systemPrompt },
+    ...history.slice(-10).filter((m) => m.content?.trim()), // 过滤空内容
     { role: 'user', content: userMessage },
   ];
 
@@ -520,8 +522,11 @@ async function callLLM(
       break;
 
     case 'openai':
+    case 'deepseek':
     default:
-      url = 'https://api.openai.com/v1/chat/completions';
+      url = model_provider === 'deepseek'
+        ? 'https://api.deepseek.com/chat/completions'
+        : 'https://api.openai.com/v1/chat/completions';
       headers = {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${api_key_encrypted}`,
@@ -529,14 +534,26 @@ async function callLLM(
       break;
   }
 
-  const modelName = model_name || 'qwen-turbo';
+  const defaultModelNames: Record<string, string> = {
+    qwen: 'qwen-turbo',
+    glm: 'glm-4-flash',
+    openai: 'gpt-4o-mini',
+    deepseek: 'deepseek-chat',
+  };
+  const modelName = model_name || defaultModelNames[model_provider] || 'qwen-turbo';
 
-  const body = {
+  const body: Record<string, any> = {
     model: modelName,
     messages,
     temperature: temperature ?? 0.7,
-    max_tokens: max_tokens ?? 200,
   };
+
+  // DeepSeek 使用 max_completion_tokens 替代 max_tokens
+  if (model_provider === 'deepseek') {
+    body.max_completion_tokens = max_tokens ?? 200;
+  } else {
+    body.max_tokens = max_tokens ?? 200;
+  }
 
   const response = await fetch(url, {
     method: 'POST',
@@ -545,7 +562,14 @@ async function callLLM(
   });
 
   if (!response.ok) {
-    throw new Error(`API error: ${response.status} ${response.statusText}`);
+    let errMsg = `API error: ${response.status} ${response.statusText}`;
+    try {
+      const errBody = await response.json();
+      if (errBody?.error?.message) {
+        errMsg = `API error: ${response.status} - ${errBody.error.message}`;
+      }
+    } catch { /* ignore */ }
+    throw new Error(errMsg);
   }
 
   const data = await response.json();

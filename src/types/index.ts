@@ -235,6 +235,18 @@ export interface EvolutionHistory {
   evolved_at: string;
 }
 
+/** 图鉴条目：满级宠物保存的快照 */
+export interface CollectionEntry {
+  id: string;
+  child_id: string;
+  pet_id: string;
+  species_id: string;
+  pet_name: string;
+  species_emoji: string;
+  species_display_name: string;
+  saved_at: string;
+}
+
 export interface BehaviorCategory {
   id: string;
   family_id: string;
@@ -371,6 +383,10 @@ export interface PetEquipment {
   item_id: string;
   equipped: number;
   acquired_at: string;
+  /** JOIN shop_items 回来的商品名称 */
+  item_name?: string;
+  /** JOIN shop_items 回来的商品图片/emoji */
+  item_image?: string | null;
 }
 
 export interface AIConfig {

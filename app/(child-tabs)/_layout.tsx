@@ -1,6 +1,7 @@
 import { Tabs } from 'expo-router';
 import { StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing } from '@/theme/tokens';
 
 export default function ChildTabsLayout() {
@@ -25,23 +26,43 @@ export default function ChildTabsLayout() {
     >
       <Tabs.Screen
         name="index"
-        options={{ title: '首页', headerTitle: '萌宠成长记' }}
+        options={{
+          title: '首页',
+          headerTitle: '萌宠成长记',
+          tabBarIcon: ({ color, size }) => <Ionicons name="home" size={size} color={color} />,
+        }}
       />
       <Tabs.Screen
         name="tasks"
-        options={{ title: '任务', headerTitle: '今日任务' }}
+        options={{
+          title: '任务',
+          headerTitle: '今日任务',
+          tabBarIcon: ({ color, size }) => <Ionicons name="checkbox-outline" size={size} color={color} />,
+        }}
       />
       <Tabs.Screen
         name="shop"
-        options={{ title: '商城', headerTitle: '兑换商城' }}
+        options={{
+          title: '商城',
+          headerTitle: '兑换商城',
+          tabBarIcon: ({ color, size }) => <Ionicons name="cart-outline" size={size} color={color} />,
+        }}
       />
       <Tabs.Screen
         name="chat"
-        options={{ title: '对话', headerTitle: 'AI 对话' }}
+        options={{
+          title: '对话',
+          headerTitle: 'AI 对话',
+          tabBarIcon: ({ color, size }) => <Ionicons name="chatbubble-ellipses-outline" size={size} color={color} />,
+        }}
       />
       <Tabs.Screen
         name="profile"
-        options={{ title: '我的', headerTitle: '我的' }}
+        options={{
+          title: '我的',
+          headerTitle: '我的',
+          tabBarIcon: ({ color, size }) => <Ionicons name="person-outline" size={size} color={color} />,
+        }}
       />
     </Tabs>
   );

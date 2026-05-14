@@ -335,6 +335,19 @@ async function createTables(): Promise<void> {
       FOREIGN KEY (rule_id) REFERENCES behavior_rules(id) ON DELETE CASCADE,
       UNIQUE(child_id, rule_id, date)
     );`,
+
+    // 宠物图鉴表：保存满级宠物的快照信息
+    `CREATE TABLE IF NOT EXISTS pet_collection (
+      id TEXT PRIMARY KEY NOT NULL,
+      child_id TEXT NOT NULL,
+      pet_id TEXT NOT NULL,
+      species_id TEXT NOT NULL,
+      pet_name TEXT NOT NULL,
+      species_emoji TEXT NOT NULL,
+      species_display_name TEXT NOT NULL,
+      saved_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (child_id) REFERENCES children(id) ON DELETE CASCADE
+    );`,
   ];
 
   for (const sql of createTableStatements) {
@@ -350,6 +363,7 @@ async function createTables(): Promise<void> {
     `CREATE INDEX IF NOT EXISTS idx_purchases_child ON purchases(child_id, status);`,
     `CREATE INDEX IF NOT EXISTS idx_daily_summaries_child ON daily_summaries(child_id, date);`,
     `CREATE INDEX IF NOT EXISTS idx_daily_behavior_records ON daily_behavior_records(child_id, rule_id, date);`,
+    `CREATE INDEX IF NOT EXISTS idx_pet_collection_child ON pet_collection(child_id, saved_at);`,
   ];
 
   for (const sql of createIndexStatements) {

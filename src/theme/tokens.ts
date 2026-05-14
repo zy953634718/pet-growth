@@ -34,10 +34,15 @@ export const Colors = {
   successLight: '#E8F5E9',
   warning: '#FF9800',
   warningLight: '#FFF3E0',
+  warningDark: '#E65100',
+  warningDeepDark: '#BF360C',
+  warningBorder: '#FFE0B2',
+  warningBgSoft: '#FFFBF5',
   error: '#F44336',
   errorLight: '#FFEBEE',
   info: '#2196F3',
   infoLight: '#E3F2FD',
+  infoDark: '#4A90D9',
 
   // 星星金色
   star: '#FFD700',
@@ -63,10 +68,32 @@ export const Colors = {
   bgCard: '#FFFFFF',
   bgOverlay: 'rgba(0, 0, 0, 0.45)',
   overlay: 'rgba(0, 0, 0, 0.45)',
+  bgPetCircle: '#FFF9F5',        // 宠物头像底色
+  bgPinkSoft: '#FFF0F5',         // 浅粉背景
+  bgPeachSoft: '#FFF5F0',        // 浅桃色背景
+  bgCoralSoft: '#FFF0E6',        // 浅珊瑚背景
+  bgBlueSoft: '#F0FAFF',         // 浅蓝背景
+  bgCreamSoft: '#FFF9E6',        // 浅奶油背景
+  bgPinkLight: '#FFF5F7',        // 浅粉载入背景
+  bgCreamWarm: '#FFF9F0',        // 暖米色背景
+  textCreamWarm: '#997A33',      // 暖米色背景上的文字
 
   // 边框
   borderLight: '#F0E6E6',
   borderDefault: '#EEE',
+  borderInput: '#E0E0E0',        // 输入框边框
+  borderDivider: '#F0F0F0',      // 分隔线/静态进度底
+  borderMuted: '#ECECEC',        // 次级分隔
+  borderMint: '#B8F5E8',         // 薄荷卡片边框
+  borderCoral: '#FFD1CC',        // 珊瑚卡片边框
+} as const;
+
+// ─── 分类色板（行为规则默认色） ──────────────────────────
+export const CategoryPalette = {
+  study: '#4A90D9',
+  chore: '#6BCB77',
+  habit: '#FFD93D',
+  social: '#9C7BCE',
 } as const;
 
 // ─── 排版系统 ─────────────────────────────────────────────
@@ -115,9 +142,12 @@ export const Spacing = {
   4: 16,   // 标准
   5: 20,   // 舒适
   6: 24,   // 中等
+  7: 28,
   8: 32,   // 大
+  9: 36,
   10: 40,
   12: 48,
+  14: 56,
   16: 64,
 
   // 语义化别名
@@ -132,6 +162,14 @@ export const Spacing = {
   // 场景化
   screenPadding: 16,
   modalPadding: 24,
+
+  // 半级粒度（消除 N+2 反模式）
+  '1.5': 6,
+  '2.5': 10,
+  '3.5': 14,
+  '4.5': 18,
+  '5.5': 22,
+  '6.5': 26,
 } as const;
 
 // ─── 圆角系统 ─────────────────────────────────────────────

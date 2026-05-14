@@ -108,19 +108,6 @@ export const useFamilyStore = create<FamilyState>()(
           [child.id, child.family_id, child.name, child.age_range]
         );
 
-        // 为新孩子创建新手礼包任务（10000 积分，自动确认，一次性）
-        const now = new Date().toISOString();
-        const taskId = uuidv4();
-        const taskTitle = '🎁 新手礼包';
-        const taskDesc = '欢迎来到萌宠成长记！点击完成领取 10000 积分奖励，快去商城兑换你喜欢的装扮吧！';
-        await dbRun(
-          `INSERT INTO tasks (id, family_id, title, description, points_reward, stars_reward,
-            deadline, start_time, repeat_type, repeat_config, confirm_mode, overdue_penalty,
-            assignee_id, priority, status, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, NULL, ?, 'once', NULL, 'auto', 0, ?, 'high', 'in_progress', ?)`,
-          [taskId, currentFamily.id, taskTitle, taskDesc, 10000, 0, now, child.id, now]
-        );
-
         set((state) => ({
           children: [...state.children, child],
         }));

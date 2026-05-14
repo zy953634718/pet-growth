@@ -1,6 +1,8 @@
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import PointBadge from '@/components/PointBadge';
 import { useFamilyStore } from '@/stores/useFamilyStore';
 import { usePetStore } from '@/stores/usePetStore';
@@ -8,6 +10,7 @@ import { useShopStore } from '@/stores/useShopStore';
 import { useTaskStore } from '@/stores/useTaskStore';
 import { getStageInfo } from '@/constants/evolution';
 import PetAvatar from '@/components/PetAvatar';
+import CollectionSection from '@/components/CollectionSection';
 import { SLOT_LABELS } from '@/types';
 import { Colors, Typography, Spacing, BorderRadius, Shadows } from '@/theme';
 
@@ -20,28 +23,48 @@ const SLOT_EMOJI: Record<string, string> = {
 };
 
 export default function ProfileScreen() {
+  const router = useRouter();
   const currentFamily = useFamilyStore(s => s.currentFamily);
   const currentChild = useFamilyStore(s => s.currentChild);
   const pet = usePetStore(s => s.pet);
   const evolutionHistory = usePetStore(s => s.evolutionHistory);
+  const collection = usePetStore(s => s.collection);
+  const loadCollection = usePetStore(s => s.loadCollection);
   const equipments = useShopStore(s => s.equipments);
+  const equipItem = useShopStore(s => s.equipItem);
+  const unequipItem = useShopStore(s => s.unequipItem);
   const tasks = useTaskStore(s => s.tasks);
   const streaks = useTaskStore(s => s.streaks);
 
   useEffect(() => {
     if (!currentChild?.id || !pet?.id) return;
-    useShopStore.getState().loadEquipments(pet.id);
+    useShopStore.getState().loadOwnedEquipments(pet.id);
     useTaskStore.getState().loadStreaks(currentChild.id);
     if (currentFamily?.id) {
       useTaskStore.getState().loadTasks(currentFamily.id, currentChild.id);
     }
   }, [currentChild?.id, pet?.id]);
 
+  const handleToggleEquip = (eq: typeof equipments[0]) => {
+    if (!pet) return;
+    if (eq.equipped === 1) {
+      unequipItem(eq.id).then(() => useShopStore.getState().loadOwnedEquipments(pet.id));
+    } else {
+      equipItem(pet.id, eq.item_id, eq.slot_type).then(() => useShopStore.getState().loadOwnedEquipments(pet.id));
+    }
+  };
+
+  useEffect(() => {
+    if (currentChild?.id) {
+      loadCollection(currentChild.id);
+    }
+  }, [currentChild?.id]);
+
   if (!currentChild) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ fontSize: 16, color: Colors.neutral400 }}>请先选择孩子档案</Text>
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyMessage}>请先选择孩子档案</Text>
         </View>
       </SafeAreaView>
     );
@@ -50,7 +73,6 @@ export default function ProfileScreen() {
   const completedTasks = tasks.filter(t => t.status === 'completed').length;
   const currentStreak = streaks[0]?.current_streak ?? 0;
   const bestStreak = streaks[0]?.best_streak ?? 0;
-  const equippedItems = equipments.filter(e => e.equipped === 1);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -108,15 +130,26 @@ export default function ProfileScreen() {
         {/* 我的装扮 */}
         <View style={styles.sectionBox}>
           <Text style={styles.sectionTitle}>🎨 我的装扮</Text>
-          {equippedItems.length > 0 ? (
+          {equipments.length > 0 ? (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.equipmentRow}>
-              {equippedItems.map((eq) => (
-                <View key={eq.id} style={styles.equipCard}>
+              {equipments.map((eq) => (
+                <TouchableOpacity
+                  key={eq.id}
+                  style={[
+                    styles.equipCard,
+                    eq.equipped === 1 && styles.equipCardEquipped,
+                  ]}
+                  activeOpacity={0.7}
+                  onPress={() => handleToggleEquip(eq)}
+                >
                   <Text style={styles.equipEmoji}>
-                    {SLOT_EMOJI[eq.slot_type] || '✨'}
+                    {eq.item_image || SLOT_EMOJI[eq.slot_type] || '✨'}
                   </Text>
-                  <Text style={styles.equipName}>{SLOT_LABELS[eq.slot_type as keyof typeof SLOT_LABELS] || eq.slot_type}</Text>
-                </View>
+                  <Text style={styles.equipName} numberOfLines={1}>{eq.item_name || SLOT_LABELS[eq.slot_type as keyof typeof SLOT_LABELS] || eq.slot_type}</Text>
+                  <Text style={eq.equipped === 1 ? styles.equipBadgeOn : styles.equipBadgeOff}>
+                    {eq.equipped === 1 ? '穿戴中' : '未穿戴'}
+                  </Text>
+                </TouchableOpacity>
               ))}
             </ScrollView>
           ) : (
@@ -141,7 +174,27 @@ export default function ProfileScreen() {
           )}
         </View>
 
-        <View style={{ height: 30 }} />
+        {/* 我的图鉴 */}
+        <CollectionSection entries={collection} />
+        {collection.length === 0 && (
+          <View style={styles.sectionBox}>
+            <Text style={styles.sectionTitle}>📖 我的图鉴</Text>
+            <Text style={styles.emptyHint}>还没有满级宠物哦，继续加油吧~</Text>
+          </View>
+        )}
+
+        {/* 切换到家长端 */}
+        <TouchableOpacity
+          style={styles.switchBtn}
+          onPress={() => router.push({ pathname: '/ParentLock', params: { target: 'parent' } })}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="shield-checkmark-outline" size={20} color={Colors.primary500} />
+          <Text style={styles.switchBtnText}>切换到家长端</Text>
+          <Ionicons name="chevron-forward" size={18} color={Colors.neutral300} />
+        </TouchableOpacity>
+
+        <View style={styles.bottomSpacer} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -152,22 +205,34 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.bgPrimary,
   },
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyMessage: {
+    fontSize: Typography.lg,
+    color: Colors.neutral400,
+  },
+  bottomSpacer: {
+    height: Spacing[8] - 2,
+  },
   scrollContent: {
-    padding: 18,
-    paddingTop: 10,
+    padding: Spacing['4.5'],
+    paddingTop: Spacing['2.5'],
   },
   profileHeader: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: Spacing[6],
   },
   avatarCircle: {
     width: 90,
     height: 90,
     borderRadius: 45,
-    backgroundColor: '#FFF0F5',
+    backgroundColor: Colors.bgPinkSoft,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: Spacing[2],
     borderWidth: 3,
     borderColor: Colors.primary200,
   },
@@ -175,113 +240,126 @@ const styles = StyleSheet.create({
     fontSize: 48,
   },
   profileName: {
-    fontSize: 22,
+    fontSize: Typography['2xl'] + 2,
     fontWeight: 'bold',
     color: Colors.neutral900,
   },
   profileLevel: {
-    fontSize: 13,
+    fontSize: Typography.sm + 1,
     color: Colors.primary500,
     marginTop: 2,
   },
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
-    marginBottom: 22,
+    gap: Spacing['2.5'],
+    marginBottom: Spacing['5.5'],
   },
   statCard: {
     width: '48%',
     backgroundColor: Colors.bgCard,
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing[4],
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 1,
+    ...Shadows.sm,
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: Typography.sm,
     color: Colors.neutral400,
-    marginTop: 6,
+    marginTop: Spacing['1.5'],
   },
   statNumber: {
-    fontSize: 18,
+    fontSize: Typography.xl,
     fontWeight: 'bold',
     color: Colors.neutral900,
   },
   sectionBox: {
     backgroundColor: Colors.bgCard,
-    borderRadius: 18,
-    padding: 18,
-    marginBottom: 14,
+    borderRadius: BorderRadius['2xl'],
+    padding: Spacing['4.5'],
+    marginBottom: Spacing['3.5'],
   },
   sectionTitle: {
-    fontSize: 17,
+    fontSize: Typography.lg + 1,
     fontWeight: '700',
     color: Colors.neutral900,
-    marginBottom: 14,
+    marginBottom: Spacing['3.5'],
   },
   detailRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 9,
+    paddingVertical: Spacing['2.5'] - 1,
     borderBottomWidth: 1,
     borderBottomColor: Colors.neutral100,
   },
   detailLabel: {
-    fontSize: 14,
+    fontSize: Typography.base,
     color: Colors.neutral600,
   },
   detailValue: {
-    fontSize: 15,
+    fontSize: Typography.base + 1,
     fontWeight: '700',
     color: Colors.primary500,
   },
   equipmentRow: {
-    gap: 12,
-    paddingRight: 4,
+    gap: Spacing[3],
+    paddingRight: Spacing[1],
   },
   equipCard: {
     width: 80,
-    backgroundColor: '#FFF9F5',
-    borderRadius: 14,
-    padding: 12,
+    backgroundColor: Colors.bgPetCircle,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing[3],
     alignItems: 'center',
   },
+  equipCardEquipped: {
+    borderWidth: 2,
+    borderColor: Colors.primary400,
+  },
   equipEmoji: {
-    fontSize: 32,
-    marginBottom: 4,
+    fontSize: Typography['4xl'] + 4,
+    marginBottom: Spacing[1],
   },
   equipName: {
-    fontSize: 11,
+    fontSize: Typography.xs + 1,
     color: Colors.neutral600,
     textAlign: 'center',
+    maxWidth: 68,
+  },
+  equipBadgeOn: {
+    fontSize: 9,
+    color: Colors.primary500,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  equipBadgeOff: {
+    fontSize: 9,
+    color: Colors.neutral400,
+    marginTop: 2,
   },
   emptyHint: {
-    fontSize: 13,
+    fontSize: Typography.sm + 1,
     color: Colors.neutral300,
     textAlign: 'center',
-    paddingVertical: 10,
+    paddingVertical: Spacing['2.5'],
   },
   evoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: Spacing['2.5'],
     borderLeftWidth: 2,
     borderColor: Colors.primary200,
-    paddingLeft: 14,
-    marginLeft: 7,
+    paddingLeft: Spacing['3.5'],
+    marginLeft: Spacing['1.5'] + 1,
   },
   evoDot: {
-    width: 36,
-    height: 36,
+    width: Spacing[9],
+    height: Spacing[9],
     borderRadius: 18,
-    backgroundColor: '#FFF5F0',
+    backgroundColor: Colors.bgPeachSoft,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: Spacing[3],
     position: 'relative',
     left: -26,
   },
@@ -290,13 +368,29 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   evoName: {
-    fontSize: 14,
+    fontSize: Typography.base,
     fontWeight: '600',
     color: Colors.neutral800,
   },
   evoDate: {
-    fontSize: 12,
+    fontSize: Typography.sm,
     color: Colors.neutral400,
     marginTop: 2,
+  },
+  switchBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.bgCard,
+    borderRadius: BorderRadius['2xl'],
+    paddingVertical: Spacing['3.5'],
+    paddingHorizontal: Spacing['4.5'],
+    gap: Spacing[3],
+    ...Shadows.sm,
+  },
+  switchBtnText: {
+    flex: 1,
+    fontSize: Typography.base + 1,
+    fontWeight: '600',
+    color: Colors.primary500,
   },
 });

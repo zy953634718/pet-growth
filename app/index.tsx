@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Redirect } from 'expo-router';
 import { ActivityIndicator, View, StyleSheet } from 'react-native';
 import { useFamilyStore } from '@/stores/useFamilyStore';
+import { Colors } from '@/theme';
 
 export default function Index() {
   const [hydrated, setHydrated] = useState(() => useFamilyStore.persist.hasHydrated());
@@ -18,7 +19,7 @@ export default function Index() {
   if (!hydrated) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#FF6B6B" />
+        <ActivityIndicator size="large" color={Colors.primary500} />
       </View>
     );
   }
@@ -31,5 +32,5 @@ export default function Index() {
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFF5F7' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.bgPinkLight },
 });

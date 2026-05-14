@@ -1,5 +1,5 @@
-import React, { useEffect, useCallback, useMemo, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Animated } from 'react-native';
+import React, { useEffect, useCallback, useMemo, useRef, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, TextInput, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import PetStatusBars from '@/components/PetStatusBars';
@@ -10,9 +10,10 @@ import { usePetStore } from '@/stores/usePetStore';
 import { useTaskStore } from '@/stores/useTaskStore';
 import { useBehaviorStore } from '@/stores/useBehaviorStore';
 import PetAvatar from '@/components/PetAvatar';
-import { getStageInfo, getSpeciesInfo } from '@/constants/evolution';
+import { getStageInfo, getSpeciesInfo, PET_SPECIES } from '@/constants/evolution';
 import { MoodType, HealthType } from '@/types';
 import { Colors, Typography, Spacing, BorderRadius, Shadows } from '@/theme';
+import Modal from '@/components/Modal';
 
 /** 与 usePetStore 中 HEAL_COST_STARS / RETURN_HOME_POINTS 保持一致 */
 const HEAL_COST_STARS = 3;
@@ -38,6 +39,28 @@ export default function ChildHomeScreen() {
   const router = useRouter();
   const careCooldownRef = useRef(false);
   const careScaleRef = useRef(new Animated.Value(1));
+
+  // Modal 状态
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalMessage, setModalMessage] = useState('');
+  const [modalActions, setModalActions] = useState<{ text: string; onPress?: () => void; primary?: boolean }[]>([]);
+
+  const showModal = useCallback((title: string, message: string, actions?: { text: string; onPress?: () => void; primary?: boolean }[]) => {
+    setModalTitle(title);
+    setModalMessage(message);
+    setModalActions(actions || [{ text: '知道了', primary: true }]);
+    setModalVisible(true);
+  }, []);
+
+  const hideModal = useCallback(() => setModalVisible(false), []);
+
+  // 图鉴 + 领养状态
+  const [showAdoptModal, setShowAdoptModal] = useState(false);
+  const [adoptSpeciesId, setAdoptSpeciesId] = useState(PET_SPECIES[0].id);
+  const [adoptPetName, setAdoptPetName] = useState('');
+  const [isAdopting, setIsAdopting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const { currentFamily, currentChild } = useFamilyStore();
   const {
     pet,
@@ -50,6 +73,8 @@ export default function ChildHomeScreen() {
     restPet,
     healPet,
     returnFromRunaway,
+    saveToCollection,
+    adoptNewPet,
   } = usePetStore();
   const { tasks, loadTasks, submitTask } = useTaskStore();
   const { records, loadRecords } = useBehaviorStore();
@@ -147,10 +172,10 @@ export default function ChildHomeScreen() {
       const fn = actionMap[key];
       if (fn) {
         fn().then(() => {
-          Alert.alert('成功', '照顾完成！');
+          showModal('成功', '照顾完成！');
           if (currentChild) loadPet(currentChild.id);
         }).catch((err: Error) => {
-          Alert.alert('提示', err.message || '操作失败');
+          showModal('提示', err.message || '操作失败');
         }).finally(() => {
           setTimeout(() => { careCooldownRef.current = false; }, 800);
         });
@@ -163,27 +188,28 @@ export default function ChildHomeScreen() {
 
   const handleReturnHome = useCallback(() => {
     if (!pet?.ran_away_at) return;
-    Alert.alert(
+    showModal(
       '接宠物回家',
       `消耗 ${RETURN_HOME_POINTS} 积分，把 TA 接回家并恢复健康状态。`,
       [
-        { text: '取消', style: 'cancel' },
+        { text: '取消' },
         {
           text: '确认接回',
+          primary: true,
           onPress: () => {
             returnFromRunaway(true)
               .then((ok) => {
                 if (ok && currentChild) {
                   loadPet(currentChild.id);
-                  Alert.alert('欢迎回家', '小家伙回来了！');
+                  showModal('欢迎回家', '小家伙回来了！');
                 }
               })
-              .catch((err: Error) => Alert.alert('提示', err.message || '操作失败'));
+              .catch((err: Error) => showModal('提示', err.message || '操作失败'));
           },
         },
       ]
     );
-  }, [pet?.ran_away_at, currentChild, returnFromRunaway, loadPet]);
+  }, [pet?.ran_away_at, currentChild, returnFromRunaway, loadPet, showModal]);
 
   const handleSubmitTask = useCallback((taskId: string) => {
     if (!currentChild || !currentFamily) return;
@@ -191,15 +217,60 @@ export default function ChildHomeScreen() {
       const familyId = currentFamily.id;
       loadTasks(familyId, currentChild.id);
       loadRecords(currentChild.id);
-      Alert.alert('成功', '任务已提交！');
-    }).catch((e: Error) => Alert.alert('提示', e.message));
+      showModal('成功', '任务已提交！');
+    }).catch((e: Error) => showModal('提示', e.message));
   }, [currentChild, currentFamily, submitTask, loadTasks, loadRecords]);
+
+  const handleSaveToCollection = useCallback(() => {
+    if (!currentChild || !pet) return;
+    showModal(
+      '保存到图鉴',
+      `将「${pet.name}」保存到图鉴？保存后可以领取一只新宠物继续冒险！`,
+      [
+        { text: '再想想' },
+        {
+          text: '保存',
+          primary: true,
+          onPress: () => {
+            setIsSaving(true);
+            saveToCollection(currentChild.id)
+              .then(() => {
+                setShowAdoptModal(true);
+                setAdoptSpeciesId(PET_SPECIES[0].id);
+                setAdoptPetName('');
+              })
+              .catch((err: Error) => showModal('提示', err.message))
+              .finally(() => setIsSaving(false));
+          },
+        },
+      ]
+    );
+  }, [currentChild, pet, saveToCollection, showModal]);
+
+  const handleAdoptPet = useCallback(() => {
+    if (!currentChild) return;
+    if (!adoptPetName.trim()) {
+      showModal('提示', '请给新宠物取个名字');
+      return;
+    }
+    setIsAdopting(true);
+    adoptNewPet(currentChild.id, adoptSpeciesId, adoptPetName.trim())
+      .then(() => {
+        setShowAdoptModal(false);
+        loadPet(currentChild.id);
+        showModal('🎉 欢迎新伙伴', '新宠物已加入你的家庭！');
+      })
+      .catch((err: Error) => showModal('提示', err.message))
+      .finally(() => setIsAdopting(false));
+  }, [currentChild, adoptSpeciesId, adoptPetName, adoptNewPet, loadPet, showModal]);
+
+  const selectedAdoptSpecies = PET_SPECIES.find(s => s.id === adoptSpeciesId);
 
   if (!currentChild) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
-          <Text style={{ fontSize: 18, color: '#999' }}>请先选择孩子档案</Text>
+          <Text style={styles.loadingText}>请先选择孩子档案</Text>
         </View>
       </SafeAreaView>
     );
@@ -226,9 +297,9 @@ export default function ChildHomeScreen() {
         <View style={styles.petArea}>
           <View style={styles.petCircle}>
             {pet ? (
-              <PetAvatar speciesId={pet.species_id} stage={pet.current_stage} size={140} />
+              <PetAvatar speciesId={pet.species_id} stage={pet.current_stage} size={90} />
             ) : (
-              <Text style={{ fontSize: 90 }}>🥚</Text>
+              <Text style={styles.petEmojiLarge}>🥚</Text>
             )}
           </View>
           <View style={styles.petInfo}>
@@ -247,6 +318,49 @@ export default function ChildHomeScreen() {
           </View>
         </View>
 
+        {/* 满级保存到图鉴入口 */}
+        {pet && pet.level >= 8 && !showAdoptModal && (
+          <TouchableOpacity
+            style={styles.collectionBtn}
+            activeOpacity={0.8}
+            onPress={handleSaveToCollection}
+            disabled={isSaving}
+          >
+            {isSaving ? (
+              <ActivityIndicator color={Colors.bgCard} size="small" />
+            ) : (
+              <>
+                <Text style={styles.collectionBtnEmoji}>📖</Text>
+                <View style={styles.collectionBtnTextWrap}>
+                  <Text style={styles.collectionBtnTitle}>保存到图鉴</Text>
+                  <Text style={styles.collectionBtnHint}>恭喜满级！保存后可以领取新宠物继续冒险</Text>
+                </View>
+                <Text style={styles.collectionBtnArrow}>›</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        )}
+
+        {/* 无活跃宠物：领养入口 */}
+        {!pet && !showAdoptModal && (
+          <TouchableOpacity
+            style={styles.collectionBtn}
+            activeOpacity={0.8}
+            onPress={() => {
+              setAdoptSpeciesId(PET_SPECIES[0].id);
+              setAdoptPetName('');
+              setShowAdoptModal(true);
+            }}
+          >
+            <Text style={styles.collectionBtnEmoji}>🐣</Text>
+            <View style={styles.collectionBtnTextWrap}>
+              <Text style={styles.collectionBtnTitle}>领取新宠物</Text>
+              <Text style={styles.collectionBtnHint}>消耗 100 积分，开始新的养成冒险</Text>
+            </View>
+            <Text style={styles.collectionBtnArrow}>›</Text>
+          </TouchableOpacity>
+        )}
+
         {/* 状态条 */}
         <View style={styles.statusCard}>
           {pet ? (
@@ -258,7 +372,7 @@ export default function ChildHomeScreen() {
               moodType={pet.mood_type}
             />
           ) : (
-            <Text style={{ textAlign: 'center', color: '#999', padding: 10 }}>加载宠物状态中...</Text>
+            <Text style={styles.statusLoadingText}>加载宠物状态中...</Text>
           )}
           <Text style={styles.statusText}>
             {statusText}
@@ -330,6 +444,115 @@ export default function ChildHomeScreen() {
           <Text style={styles.progressDetail}>已获 {todayPoints} 积分 · 完成 {completedTasks.length}/{tasks.length} 任务</Text>
         </View>
       </ScrollView>
+
+      {/* 自定义弹窗 */}
+      <Modal visible={modalVisible} onClose={hideModal} title={modalTitle}>
+        <Text style={{ fontSize: 15, color: Colors.neutral600, marginBottom: 20, lineHeight: 22 }}>
+          {modalMessage}
+        </Text>
+        <View style={{ flexDirection: 'row', gap: 12, justifyContent: 'flex-end' }}>
+          {modalActions.map((action, idx) => (
+            <TouchableOpacity
+              key={idx}
+              onPress={() => {
+                hideModal();
+                action.onPress?.();
+              }}
+              style={{
+                paddingVertical: 10,
+                paddingHorizontal: 20,
+                borderRadius: 10,
+                backgroundColor: action.primary ? Colors.primary500 : Colors.neutral100,
+              }}
+            >
+              <Text style={{
+                fontSize: 15,
+                fontWeight: action.primary ? '700' : '500',
+                color: action.primary ? Colors.neutral0 : Colors.neutral600,
+              }}>
+                {action.text}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </Modal>
+
+      {/* 领养新宠物弹窗 */}
+      <Modal visible={showAdoptModal} onClose={() => setShowAdoptModal(false)} title="领取新宠物">
+        <Text style={{ fontSize: Typography.sm, color: Colors.neutral500, marginBottom: Spacing['2.5'], textAlign: 'center' }}>
+          消耗 100 积分（当前: {currentChild?.current_points ?? 0}）
+        </Text>
+
+        {/* 物种选择网格 */}
+        <View style={styles.adoptGrid}>
+          {PET_SPECIES.map((s) => (
+            <TouchableOpacity
+              key={s.id}
+              style={[
+                styles.adoptPetCard,
+                adoptSpeciesId === s.id && styles.adoptPetCardSelected,
+                { borderColor: adoptSpeciesId === s.id ? s.color : Colors.neutral200 },
+              ]}
+              onPress={() => setAdoptSpeciesId(s.id)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.adoptPetEmoji}>{s.emoji}</Text>
+              <Text style={styles.adoptPetName}>{s.name}</Text>
+              {adoptSpeciesId === s.id && (
+                <View style={[styles.adoptCheckBadge, { backgroundColor: s.color }]}>
+                  <Text style={styles.adoptCheckText}>✓</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {selectedAdoptSpecies && (
+          <View style={styles.adoptDescBox}>
+            <Text style={styles.adoptDescText}>{selectedAdoptSpecies.description}</Text>
+          </View>
+        )}
+
+        {/* 取名 */}
+        <View style={{ marginBottom: Spacing['3.5'] }}>
+          <Text style={{ fontSize: Typography.base, fontWeight: '600', color: Colors.neutral800, textAlign: 'center', marginBottom: Spacing['2'] }}>
+            给新宠物取个名字 🏷️
+          </Text>
+          <TextInput
+            style={styles.adoptNameInput}
+            placeholder="例如：小团子"
+            value={adoptPetName}
+            onChangeText={setAdoptPetName}
+            maxLength={10}
+            textAlign="center"
+          />
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 12 }}>
+          <TouchableOpacity
+            style={styles.adoptCancelBtn}
+            onPress={() => setShowAdoptModal(false)}
+          >
+            <Text style={styles.adoptCancelText}>以后再说</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.adoptConfirmBtn,
+              ((currentChild?.current_points ?? 0) < 100 || !adoptPetName.trim() || isAdopting) && { opacity: 0.5 },
+            ]}
+            onPress={handleAdoptPet}
+            disabled={(currentChild?.current_points ?? 0) < 100 || !adoptPetName.trim() || isAdopting}
+          >
+            {isAdopting ? (
+              <ActivityIndicator color={Colors.bgCard} size="small" />
+            ) : (
+              <Text style={styles.adoptConfirmText}>
+                {adoptPetName.trim() ? `🎉 领养「${adoptPetName.trim()}」` : '🎉 领养新宠物'}
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -337,13 +560,25 @@ export default function ChildHomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bgPrimary },
   scrollContent: {
-    padding: Spacing[4] + 2,
-    paddingBottom: Spacing[6] + 6,
+    padding: Spacing['4.5'],
+    paddingBottom: Spacing['7'],
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: Typography.xl,
+    color: Colors.neutral500,
+  },
+  statusLoadingText: {
+    textAlign: 'center',
+    color: Colors.neutral500,
+    padding: Spacing['2.5'],
+  },
+  petEmojiLarge: {
+    fontSize: 90,
   },
   header: {
     flexDirection: 'row',
@@ -358,7 +593,7 @@ const styles = StyleSheet.create({
   },
   currencyRow: {
     flexDirection: 'row',
-    gap: Spacing[2] - 1,
+    gap: Spacing['1.5'],
   },
   petArea: {
     flexDirection: 'row',
@@ -366,19 +601,18 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.bgCard,
     borderRadius: BorderRadius['3xl'],
     padding: Spacing[4],
-    marginBottom: Spacing[3] + 2,
+    marginBottom: Spacing['3.5'],
     ...Shadows.md,
   },
   petCircle: {
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: '#FFF9F5',
+    backgroundColor: Colors.bgPetCircle,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: Spacing[3] + 2,
+    marginRight: Spacing['3.5'],
   },
-  petEmoji: {},
   petInfo: {
     flex: 1,
   },
@@ -388,13 +622,13 @@ const styles = StyleSheet.create({
     color: Colors.neutral900,
   },
   petLevel: {
-    fontSize: Typography.sm + 1,
+    fontSize: Typography.sm,
     color: Colors.primary500,
-    marginTop: Spacing[1] / 2,
+    marginTop: 2,
     fontWeight: '500',
   },
   pointsBar: {
-    marginTop: Spacing[2] + 2,
+    marginTop: Spacing['2.5'],
     position: 'relative',
   },
   pointsFill: {
@@ -403,53 +637,53 @@ const styles = StyleSheet.create({
     borderRadius: Spacing[1],
   },
   pointsText: {
-    fontSize: Typography.xs + 1,
+    fontSize: Typography.xs,
     color: Colors.neutral400,
-    marginTop: Spacing[1] / 2,
+    marginTop: 2,
   },
   statusCard: {
     backgroundColor: Colors.bgCard,
-    borderRadius: BorderRadius.xl + 4,
-    padding: Spacing[3] + 2,
-    marginBottom: Spacing[3] + 2,
+    borderRadius: BorderRadius['2xl'],
+    padding: Spacing['3.5'],
+    marginBottom: Spacing['3.5'],
     ...Shadows.sm,
   },
   statusText: {
-    fontSize: Typography.sm + 1,
+    fontSize: Typography.sm,
     color: Colors.neutral600,
     textAlign: 'center',
-    marginTop: Spacing[2] + 2,
-    lineHeight: Typography.sm + 7,
+    marginTop: Spacing['2.5'],
+    lineHeight: 19,
   },
   careScroll: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: Spacing[3] + 2,
+    gap: Spacing['3.5'],
     paddingVertical: Spacing[1],
-    marginBottom: Spacing[4] + 2,
+    marginBottom: Spacing['4.5'],
     paddingRight: Spacing[2],
   },
   careBtn: {
     alignItems: 'center',
-    width: Spacing[8] + 24,
+    width: Spacing[14],
   },
   runawayCard: {
     backgroundColor: Colors.warningLight,
     borderRadius: BorderRadius.xl,
     padding: Spacing[4],
-    marginBottom: Spacing[4] + 2,
+    marginBottom: Spacing['4.5'],
     borderWidth: 1,
-    borderColor: '#FFE0B2',
+    borderColor: Colors.warningBorder,
   },
   runawayTitle: {
     fontSize: Typography.lg,
     fontWeight: '700',
-    color: '#E65100',
+    color: Colors.warningDark,
     marginBottom: Spacing[1],
   },
   runawayHint: {
-    fontSize: Typography.sm + 1,
-    color: '#BF360C',
+    fontSize: Typography.sm,
+    color: Colors.warningDeepDark,
     marginBottom: Spacing[3],
   },
   runawayBtn: {
@@ -460,19 +694,19 @@ const styles = StyleSheet.create({
   },
   runawayBtnText: {
     color: Colors.neutral0,
-    fontSize: Typography.base + 1,
+    fontSize: Typography.base,
     fontWeight: '700',
   },
   careEmoji: {
-    fontSize: Typography['3xl'] + 8,
-    marginBottom: Spacing[1] / 2,
+    fontSize: Typography['4xl'],
+    marginBottom: 2,
   },
   careLabel: {
-    fontSize: Typography.xs + 1,
+    fontSize: Typography.xs,
     color: Colors.neutral600,
   },
   cost: {
-    fontSize: Typography.xs - 1,
+    fontSize: Typography.xs,
     color: Colors.primary500,
     fontWeight: '600',
   },
@@ -480,16 +714,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: Spacing[2] + 2,
-    marginTop: Spacing[1] + 2,
+    marginBottom: Spacing['2.5'],
+    marginTop: Spacing['1.5'],
   },
   sectionTitle: {
-    fontSize: Typography.lg + 1,
+    fontSize: Typography.lg,
     fontWeight: '700',
     color: Colors.neutral900,
   },
   moreLink: {
-    fontSize: Typography.sm + 1,
+    fontSize: Typography.sm,
     color: Colors.secondary300,
     fontWeight: '500',
   },
@@ -505,30 +739,159 @@ const styles = StyleSheet.create({
     marginBottom: Spacing[2],
   },
   progressTitle: {
-    fontSize: Typography.base + 1,
+    fontSize: Typography.base,
     fontWeight: '600',
     color: Colors.neutral900,
   },
   progressPercent: {
-    fontSize: Typography.base + 1,
+    fontSize: Typography.base,
     fontWeight: '700',
     color: Colors.secondary300,
   },
   progressBarBg: {
-    height: Spacing[2] + 2,
+    height: Spacing['2.5'],
     backgroundColor: Colors.neutral200,
-    borderRadius: Spacing[1] + 1,
+    borderRadius: Spacing['1.5'],
     overflow: 'hidden',
-    marginBottom: Spacing[1] + 2,
+    marginBottom: Spacing['1.5'],
   },
   progressBarFill: {
-    height: Spacing[2] + 2,
+    height: Spacing['2.5'],
     backgroundColor: Colors.secondary300,
-    borderRadius: Spacing[1] + 1,
+    borderRadius: Spacing['1.5'],
   },
   progressDetail: {
-    fontSize: Typography.sm + 1,
+    fontSize: Typography.sm,
     color: Colors.neutral400,
     textAlign: 'center',
+  },
+  // 图鉴 / 领养相关样式
+  collectionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.bgCard,
+    borderRadius: BorderRadius['2xl'],
+    padding: Spacing['3.5'],
+    marginBottom: Spacing['3.5'],
+    ...Shadows.sm,
+    borderWidth: 1.5,
+    borderColor: Colors.primary200,
+  },
+  collectionBtnEmoji: {
+    fontSize: Typography['3xl'],
+    marginRight: Spacing[3],
+  },
+  collectionBtnTextWrap: {
+    flex: 1,
+  },
+  collectionBtnTitle: {
+    fontSize: Typography.base + 1,
+    fontWeight: '700',
+    color: Colors.primary500,
+  },
+  collectionBtnHint: {
+    fontSize: Typography.xs,
+    color: Colors.neutral400,
+    marginTop: 2,
+  },
+  collectionBtnArrow: {
+    fontSize: Typography['2xl'],
+    color: Colors.neutral300,
+    fontWeight: '700',
+  },
+  adoptGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing['2.5'],
+    justifyContent: 'center',
+    marginBottom: Spacing['2.5'],
+  },
+  adoptPetCard: {
+    width: '30%',
+    aspectRatio: 0.9,
+    borderRadius: BorderRadius['2xl'],
+    borderWidth: 2.5,
+    borderColor: Colors.neutral200,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.neutral50,
+    paddingVertical: Spacing['2.5'],
+  },
+  adoptPetCardSelected: {
+    shadowColor: Colors.primary500,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
+    transform: [{ scale: 1.04 }],
+  },
+  adoptPetEmoji: {
+    fontSize: 36,
+  },
+  adoptPetName: {
+    marginTop: Spacing[1],
+    fontSize: Typography.xs,
+    fontWeight: '600',
+    color: Colors.neutral700,
+  },
+  adoptCheckBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  adoptCheckText: {
+    color: Colors.bgCard,
+    fontSize: Typography.xs,
+    fontWeight: 'bold',
+  },
+  adoptDescBox: {
+    backgroundColor: Colors.bgCreamWarm,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing[3],
+    alignItems: 'center',
+    marginBottom: Spacing[3],
+  },
+  adoptDescText: {
+    fontSize: Typography.sm,
+    color: Colors.textCreamWarm,
+    textAlign: 'center',
+  },
+  adoptNameInput: {
+    borderWidth: 1.5,
+    borderColor: Colors.borderInput,
+    borderRadius: BorderRadius.lg,
+    paddingHorizontal: Spacing[4],
+    paddingVertical: Spacing[3],
+    fontSize: Typography.base + 1,
+    backgroundColor: Colors.neutral50,
+  },
+  adoptCancelBtn: {
+    flex: 1,
+    paddingVertical: Spacing[3],
+    borderRadius: BorderRadius.button,
+    backgroundColor: Colors.neutral100,
+    alignItems: 'center',
+  },
+  adoptCancelText: {
+    fontSize: Typography.base,
+    fontWeight: '600',
+    color: Colors.neutral600,
+  },
+  adoptConfirmBtn: {
+    flex: 2,
+    paddingVertical: Spacing[3],
+    borderRadius: BorderRadius.button,
+    backgroundColor: Colors.primary500,
+    alignItems: 'center',
+  },
+  adoptConfirmText: {
+    fontSize: Typography.base,
+    fontWeight: '700',
+    color: Colors.bgCard,
   },
 });

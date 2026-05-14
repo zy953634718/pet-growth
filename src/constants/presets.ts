@@ -124,29 +124,29 @@ export const PRESET_TASK_TEMPLATES: Record<string, {
 // ============================================================
 export const PRESET_SHOP_COSMETICS = [
   // Hats
-  { name: '小红帽', item_type: 'cosmetic' as const, sub_type: 'hat', price_type: 'points' as const, price: 30, rarity: 'common' as const },
-  { name: '王冠', item_type: 'cosmetic' as const, sub_type: 'hat', price_type: 'stars' as const, price: 2, rarity: 'rare' as const },
-  { name: '猫耳发箍', item_type: 'cosmetic' as const, sub_type: 'hat', price_type: 'points' as const, price: 50, rarity: 'common' as const },
-  { name: '星星头饰', item_type: 'cosmetic' as const, sub_type: 'hat', price_type: 'stars' as const, price: 3, rarity: 'epic' as const },
+  { name: '小红帽', emoji: '🧢', item_type: 'cosmetic' as const, sub_type: 'hat', price_type: 'points' as const, price: 30, rarity: 'common' as const },
+  { name: '王冠', emoji: '👑', item_type: 'cosmetic' as const, sub_type: 'hat', price_type: 'stars' as const, price: 2, rarity: 'rare' as const },
+  { name: '猫耳发箍', emoji: '🐱', item_type: 'cosmetic' as const, sub_type: 'hat', price_type: 'points' as const, price: 50, rarity: 'common' as const },
+  { name: '星星头饰', emoji: '⭐', item_type: 'cosmetic' as const, sub_type: 'hat', price_type: 'stars' as const, price: 3, rarity: 'epic' as const },
 
   // Clothes
-  { name: '彩虹披风', item_type: 'cosmetic' as const, sub_type: 'clothes', price_type: 'points' as const, price: 60, rarity: 'common' as const },
-  { name: '小西装', item_type: 'cosmetic' as const, sub_type: 'clothes', price_type: 'stars' as const, price: 3, rarity: 'rare' as const },
-  { name: '超人斗篷', item_type: 'cosmetic' as const, sub_type: 'clothes', price_type: 'stars' as const, price: 5, rarity: 'legendary' as const },
+  { name: '彩虹披风', emoji: '🌈', item_type: 'cosmetic' as const, sub_type: 'clothes', price_type: 'points' as const, price: 60, rarity: 'common' as const },
+  { name: '小西装', emoji: '🤵', item_type: 'cosmetic' as const, sub_type: 'clothes', price_type: 'stars' as const, price: 3, rarity: 'rare' as const },
+  { name: '超人斗篷', emoji: '🦸', item_type: 'cosmetic' as const, sub_type: 'clothes', price_type: 'stars' as const, price: 5, rarity: 'legendary' as const },
 
   // Accessories
-  { name: '小眼镜', item_type: 'cosmetic' as const, sub_type: 'accessory', price_type: 'points' as const, price: 25, rarity: 'common' as const },
-  { name: '蝴蝶结', item_type: 'cosmetic' as const, sub_type: 'accessory', price_type: 'points' as const, price: 20, rarity: 'common' as const },
-  { name: '金色项链', item_type: 'cosmetic' as const, sub_type: 'accessory', price_type: 'stars' as const, price: 2, rarity: 'rare' as const },
+  { name: '小眼镜', emoji: '👓', item_type: 'cosmetic' as const, sub_type: 'accessory', price_type: 'points' as const, price: 25, rarity: 'common' as const },
+  { name: '蝴蝶结', emoji: '🎀', item_type: 'cosmetic' as const, sub_type: 'accessory', price_type: 'points' as const, price: 20, rarity: 'common' as const },
+  { name: '金色项链', emoji: '📿', item_type: 'cosmetic' as const, sub_type: 'accessory', price_type: 'stars' as const, price: 2, rarity: 'rare' as const },
 
   // Backgrounds
-  { name: '绿色草原', item_type: 'cosmetic' as const, sub_type: 'background', price_type: 'points' as const, price: 40, rarity: 'common' as const },
-  { name: '海滩日落', item_type: 'cosmetic' as const, sub_type: 'background', price_type: 'stars' as const, price: 2, rarity: 'rare' as const },
-  { name: '星空夜空', item_type: 'cosmetic' as const, sub_type: 'background', price_type: 'stars' as const, price: 4, rarity: 'epic' as const },
+  { name: '绿色草原', emoji: '🌿', item_type: 'cosmetic' as const, sub_type: 'background', price_type: 'points' as const, price: 40, rarity: 'common' as const },
+  { name: '海滩日落', emoji: '🏖️', item_type: 'cosmetic' as const, sub_type: 'background', price_type: 'stars' as const, price: 2, rarity: 'rare' as const },
+  { name: '星空夜空', emoji: '🌌', item_type: 'cosmetic' as const, sub_type: 'background', price_type: 'stars' as const, price: 4, rarity: 'epic' as const },
 
   // Effects
-  { name: '小星星拖尾', item_type: 'cosmetic' as const, sub_type: 'effect', price_type: 'points' as const, price: 80, rarity: 'common' as const },
-  { name: '彩虹光环', item_type: 'cosmetic' as const, sub_type: 'effect', price_type: 'stars' as const, price: 5, rarity: 'legendary' as const },
+  { name: '小星星拖尾', emoji: '✨', item_type: 'cosmetic' as const, sub_type: 'effect', price_type: 'points' as const, price: 80, rarity: 'common' as const },
+  { name: '彩虹光环', emoji: '💫', item_type: 'cosmetic' as const, sub_type: 'effect', price_type: 'stars' as const, price: 5, rarity: 'legendary' as const },
 ];
 
 // ============================================================
@@ -257,7 +257,7 @@ export function generatePresetCosmetics(familyId: string) {
     price_type: item.price_type,
     price: item.price,
     stock: -1,
-    image: null,
+    image: item.emoji,
     rarity: item.rarity,
     is_preset: 1,
     parent_approval: 0,

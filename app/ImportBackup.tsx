@@ -98,7 +98,7 @@ export default function ImportBackupScreen() {
       />
 
       <TouchableOpacity style={styles.fileBtn} onPress={pickFile} disabled={busy} activeOpacity={0.85}>
-        {busy ? <ActivityIndicator color="#FFF" /> : <Text style={styles.fileBtnText}>📁 从文件选择</Text>}
+        {busy ? <ActivityIndicator color={Colors.bgCard} /> : <Text style={styles.fileBtnText}>📁 从文件选择</Text>}
       </TouchableOpacity>
 
       <Text style={styles.label}>或粘贴备份内容</Text>
@@ -124,46 +124,50 @@ export default function ImportBackupScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.bgPrimary, padding: 20 },
-  title: { fontSize: 22, fontWeight: 'bold', color: Colors.neutral900, marginBottom: 8 },
-  sub: { fontSize: 14, color: Colors.neutral500, marginBottom: 18, lineHeight: 20 },
+  container: { flex: 1, backgroundColor: Colors.bgPrimary, padding: Spacing[5] },
+  title: { fontSize: Typography['2xl'], fontWeight: 'bold', color: Colors.neutral900, marginBottom: Spacing[2] },
+  sub: { fontSize: Typography.base, color: Colors.neutral500, marginBottom: Spacing['4.5'], lineHeight: 20 },
   fileBtn: {
     backgroundColor: Colors.secondary300,
-    paddingVertical: 14,
-    borderRadius: 14,
+    paddingVertical: Spacing['3.5'],
+    borderRadius: BorderRadius.lg,
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: Spacing[5],
+    minHeight: TouchTarget.minHeight,
+    justifyContent: 'center',
   },
-  fileBtnText: { color: Colors.bgCard, fontSize: 16, fontWeight: 'bold' },
-  label: { fontSize: 14, fontWeight: '600', color: Colors.neutral700, marginBottom: 8 },
+  fileBtnText: { color: Colors.bgCard, fontSize: Typography.lg, fontWeight: 'bold' },
+  label: { fontSize: Typography.base, fontWeight: '600', color: Colors.neutral700, marginBottom: Spacing[2] },
   pwdInput: {
     borderWidth: 1,
-    borderColor: '#E0E0E0',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
+    borderColor: Colors.borderInput,
+    borderRadius: BorderRadius.button,
+    paddingHorizontal: Spacing['3.5'],
+    paddingVertical: Spacing[3],
+    fontSize: Typography.lg,
     backgroundColor: Colors.bgCard,
-    marginBottom: 14,
+    marginBottom: Spacing['3.5'],
   },
   input: {
     flex: 1,
     minHeight: 160,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 12,
+    borderColor: Colors.borderInput,
+    borderRadius: BorderRadius.button,
+    padding: Spacing[3],
+    fontSize: Typography.sm,
     backgroundColor: Colors.bgCard,
-    marginBottom: 16,
+    marginBottom: Spacing[4],
   },
   primary: {
     backgroundColor: Colors.primary500,
-    paddingVertical: 14,
-    borderRadius: 14,
+    paddingVertical: Spacing['3.5'],
+    borderRadius: BorderRadius.lg,
     alignItems: 'center',
+    minHeight: TouchTarget.minHeight,
+    justifyContent: 'center',
   },
-  primaryText: { color: Colors.bgCard, fontSize: 16, fontWeight: 'bold' },
-  cancel: { marginTop: 16, alignItems: 'center', padding: 10 },
-  cancelText: { color: Colors.neutral400, fontSize: 15 },
+  primaryText: { color: Colors.bgCard, fontSize: Typography.lg, fontWeight: 'bold' },
+  cancel: { marginTop: Spacing[4], alignItems: 'center', padding: Spacing['2.5'] },
+  cancelText: { color: Colors.neutral400, fontSize: Typography.base + 1 },
 });

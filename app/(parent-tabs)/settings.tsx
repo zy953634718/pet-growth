@@ -7,7 +7,6 @@ import {
   ScrollView,
   TextInput,
   Switch,
-  Alert,
   RefreshControl,
   ActivityIndicator,
   Share,
@@ -20,7 +19,10 @@ import { useAIStore } from '@/stores/useAIStore';
 import { useFamilyStore } from '@/stores/useFamilyStore';
 import { exportDatabaseEncrypted } from '@/db/database';
 import Modal, { ModalStyles } from '@/components/Modal';
+import AppModal from '@/components/AppModal';
+import { useModal } from '@/hooks/useModal';
 
+import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, BorderRadius, Shadows } from '@/theme';
 
 export default function ParentSettingsScreen() {
@@ -34,14 +36,16 @@ export default function ParentSettingsScreen() {
   const [exportModal, setExportModal] = useState(false);
   const [exportPwd, setExportPwd] = useState('');
   const [exportPwd2, setExportPwd2] = useState('');
+  const { modal, showModal, hideModal } = useModal();
 
   // Store hooks
   const { config, safetyConfig, loadConfig, updateConfig, loadSafetyConfig, updateSafetyConfig } = useAIStore();
-  const { currentFamily, updateParentPassword, purgeAllLocalData } = useFamilyStore();
+  const { currentFamily, children, selectChild, updateParentPassword, purgeAllLocalData, setRole } = useFamilyStore();
 
   // Local form state - initialized from store when available
   const [apiKey, setApiKey] = useState('');
   const [modelProvider, setModelProvider] = useState('qwen');
+  const [modelName, setModelName] = useState('');
   const [temperature, setTemperature] = useState(0.7);
   const [filterLevel, setFilterLevel] = useState<'strict' | 'standard' | 'relaxed'>('standard');
   const [dailyLimit, setDailyLimit] = useState('50');
@@ -63,6 +67,7 @@ export default function ParentSettingsScreen() {
     if (config) {
       setApiKey(config.api_key_encrypted || '');
       setModelProvider(config.model_provider || 'qwen');
+      setModelName(config.model_name || '');
       setTemperature(config.temperature ?? 0.7);
     }
   }, [config]);
@@ -84,19 +89,17 @@ export default function ParentSettingsScreen() {
   // Handle save
   const handleSave = async () => {
     if (!currentFamily) {
-      Alert.alert('提示', '未找到家庭信息');
+      showModal('提示', '未找到家庭信息');
       return;
     }
 
     try {
-      // Save AI config
       await updateConfig(currentFamily.id, {
         model_provider: modelProvider,
+        model_name: modelName.trim() || undefined,
         api_key_encrypted: apiKey || null,
         temperature,
       });
-
-      // Save safety config
       await updateSafetyConfig(currentFamily.id, {
         filter_level: filterLevel,
         daily_message_limit: parseInt(dailyLimit, 10) || 50,
@@ -104,12 +107,11 @@ export default function ParentSettingsScreen() {
         save_history: saveHistory ? 1 : 0,
         enable_voice: enableVoice ? 1 : 0,
       });
-
       setHasChanges(false);
-      Alert.alert('成功', '设置已保存');
+      showModal('成功', '设置已保存');
     } catch (error) {
       console.error('Save settings error:', error);
-      Alert.alert('错误', '保存失败，请重试');
+      showModal('错误', '保存失败，请重试');
     }
   };
 
@@ -129,6 +131,21 @@ export default function ParentSettingsScreen() {
     qwen: '通义千问',
     glm: '智谱 GLM',
     openai: 'OpenAI',
+    deepseek: 'DeepSeek',
+  };
+
+  const defaultModelNames: Record<string, string> = {
+    qwen: 'qwen-turbo',
+    glm: 'glm-4-flash',
+    openai: 'gpt-4o-mini',
+    deepseek: 'deepseek-chat',
+  };
+
+  const modelNameHints: Record<string, string> = {
+    qwen: '如 qwen-turbo · qwen-plus · qwen-max',
+    glm: '如 glm-4-flash · glm-4 · glm-4-air',
+    openai: '如 gpt-4o-mini · gpt-4o · gpt-3.5-turbo',
+    deepseek: '如 deepseek-chat · deepseek-reasoner',
   };
 
   // Filter level labels
@@ -140,21 +157,21 @@ export default function ParentSettingsScreen() {
 
   const openExportModal = useCallback(() => {
     if (!currentFamily) {
-      Alert.alert('提示', '未找到家庭信息');
+      showModal('提示', '未找到家庭信息');
       return;
     }
     setExportPwd('');
     setExportPwd2('');
     setExportModal(true);
-  }, [currentFamily]);
+  }, [currentFamily, showModal]);
 
   const performEncryptedExport = useCallback(async () => {
     if (exportPwd.length < 6) {
-      Alert.alert('提示', '备份密码至少 6 位');
+      showModal('提示', '备份密码至少 6 位');
       return;
     }
     if (exportPwd !== exportPwd2) {
-      Alert.alert('提示', '两次输入的密码不一致');
+      showModal('提示', '两次输入的密码不一致');
       return;
     }
     setExportModal(false);
@@ -174,11 +191,11 @@ export default function ParentSettingsScreen() {
       }
     } catch (e) {
       console.error(e);
-      Alert.alert('错误', '导出失败');
+      showModal('错误', '导出失败');
     } finally {
       setExporting(false);
     }
-  }, [exportPwd, exportPwd2]);
+  }, [exportPwd, exportPwd2, showModal]);
 
   const handleImportData = useCallback(() => {
     router.push('/ImportBackup');
@@ -186,50 +203,67 @@ export default function ParentSettingsScreen() {
 
   const submitPasswordChange = useCallback(async () => {
     if (newPwd.length < 4 || newPwd.length > 6) {
-      Alert.alert('提示', '新密码需为 4～6 位数字');
+      showModal('提示', '新密码需为 4～6 位数字');
       return;
     }
     if (newPwd !== confirmPwd) {
-      Alert.alert('提示', '两次输入的新密码不一致');
+      showModal('提示', '两次输入的新密码不一致');
       return;
     }
     const ok = await updateParentPassword(oldPwd, newPwd);
     if (!ok) {
-      Alert.alert('错误', '原密码不正确');
+      showModal('错误', '原密码不正确');
       return;
     }
     setPwdModal(false);
     setOldPwd('');
     setNewPwd('');
     setConfirmPwd('');
-    Alert.alert('成功', '家长密码已更新');
-  }, [oldPwd, newPwd, confirmPwd, updateParentPassword]);
+    showModal('成功', '家长密码已更新');
+  }, [oldPwd, newPwd, confirmPwd, updateParentPassword, showModal]);
 
   const handleResetData = useCallback(() => {
-    Alert.alert('警告', '将删除本机全部家庭、任务与宠物数据且不可恢复。确定继续？', [
-      { text: '取消', style: 'cancel' },
+    showModal('警告', '将删除本机全部家庭、任务与宠物数据且不可恢复。确定继续？', [
+      { text: '取消' },
       {
         text: '确定清除',
-        style: 'destructive',
+        danger: true,
         onPress: () => {
           void (async () => {
             try {
               await purgeAllLocalData();
-              Alert.alert('完成', '已清除本地数据', [
-                { text: '确定', onPress: () => router.replace('/Welcome') },
+              showModal('完成', '已清除本地数据', [
+                { text: '确定', primary: true, onPress: () => router.replace('/Welcome') },
               ]);
             } catch (e) {
               console.error(e);
-              Alert.alert('错误', '清除失败');
+              showModal('错误', '清除失败');
             }
           })();
         },
       },
     ]);
-  }, [purgeAllLocalData, router]);
+  }, [purgeAllLocalData, router, showModal]);
+
+  const handleSwitchToChild = useCallback(() => {
+    // 如果有孩子档案，自动选中第一个
+    if (children.length > 0 && !useFamilyStore.getState().currentChild) {
+      selectChild(children[0].id);
+    }
+    setRole('child');
+    router.replace('/(child-tabs)');
+  }, [children, selectChild, setRole, router]);
+
+  const DATA_ACTIONS = [
+    { icon: 'cloud-upload-outline' as const, label: '导出数据备份', desc: '导出为 .petgrowth 加密文件', onPress: openExportModal },
+    { icon: 'cloud-download-outline' as const, label: '导入数据恢复', desc: '从备份文件恢复全部数据', onPress: handleImportData },
+    { icon: 'key-outline' as const, label: '修改家长密码', desc: '更换进入家长端的密码', onPress: () => setPwdModal(true) },
+    { icon: 'trash-outline' as const, label: '重置所有数据', desc: '谨慎操作，将清除所有本地数据', onPress: handleResetData, danger: true },
+    { icon: 'people-outline' as const, label: '切换到孩子端', desc: '返回孩子的视角，查看任务和宠物', onPress: handleSwitchToChild },
+  ];
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
@@ -237,16 +271,22 @@ export default function ParentSettingsScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary500]} />
         }
       >
-        {/* 保存按钮 */}
+        {/* 保存横幅 */}
         {hasChanges && (
-          <TouchableOpacity style={styles.saveBanner} onPress={handleSave}>
+          <TouchableOpacity style={styles.saveBanner} onPress={handleSave} activeOpacity={0.85}>
+            <Ionicons name="checkmark-circle-outline" size={18} color={Colors.bgCard} />
             <Text style={styles.saveBannerText}>点击保存设置</Text>
           </TouchableOpacity>
         )}
 
         {/* AI 对话配置 */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🤖 AI 对话配置</Text>
+          <View style={styles.sectionHeader}>
+            <View style={[styles.sectionIconWrap, { backgroundColor: Colors.primary50 }]}>
+              <Ionicons name="chatbubble-ellipses-outline" size={18} color={Colors.primary500} />
+            </View>
+            <Text style={styles.sectionTitle}>AI 对话配置</Text>
+          </View>
 
           <View style={styles.field}>
             <Text style={styles.label}>API Key</Text>
@@ -259,17 +299,21 @@ export default function ParentSettingsScreen() {
               autoCapitalize="none"
               autoCorrect={false}
             />
-            <Text style={styles.hint}>支持通义千问/智谱GLM/OpenAI，Key 仅本地存储</Text>
+            <Text style={styles.hint}>支持通义千问/智谱GLM/OpenAI/DeepSeek，Key 仅本地存储</Text>
           </View>
 
           <View style={styles.field}>
             <Text style={styles.label}>模型提供商</Text>
             <View style={styles.rowBtns}>
-              {(['qwen', 'glm', 'openai'] as const).map((m) => (
+              {(['qwen', 'glm', 'openai', 'deepseek'] as const).map((m) => (
                 <TouchableOpacity
                   key={m}
                   style={[styles.selectChip, modelProvider === m && styles.selected]}
-                  onPress={() => { setModelProvider(m); markChanged(); }}
+                  onPress={() => {
+                    setModelProvider(m);
+                    setModelName('');
+                    markChanged();
+                  }}
                 >
                   <Text style={[styles.selectText, modelProvider === m && styles.selectedText]}>
                     {providerLabels[m]}
@@ -277,6 +321,20 @@ export default function ParentSettingsScreen() {
                 </TouchableOpacity>
               ))}
             </View>
+          </View>
+
+          <View style={styles.field}>
+            <Text style={styles.label}>模型名称</Text>
+            <TextInput
+              style={styles.input}
+              placeholder={defaultModelNames[modelProvider] || 'qwen-turbo'}
+              placeholderTextColor={Colors.neutral400}
+              value={modelName}
+              onChangeText={(t) => { setModelName(t); markChanged(); }}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <Text style={styles.hint}>{modelNameHints[modelProvider] || '留空使用默认模型'}</Text>
           </View>
 
           <View style={styles.field}>
@@ -297,7 +355,12 @@ export default function ParentSettingsScreen() {
 
         {/* 安全设置 */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🛡️ 安全设置</Text>
+          <View style={styles.sectionHeader}>
+            <View style={[styles.sectionIconWrap, { backgroundColor: Colors.warningLight }]}>
+              <Ionicons name="shield-checkmark-outline" size={18} color={Colors.warning} />
+            </View>
+            <Text style={styles.sectionTitle}>安全设置</Text>
+          </View>
 
           <View style={styles.field}>
             <Text style={styles.label}>内容过滤级别</Text>
@@ -358,7 +421,7 @@ export default function ParentSettingsScreen() {
             />
           </View>
 
-          <View style={styles.switchField}>
+          <View style={[styles.switchField, { borderBottomWidth: 0, marginBottom: 0 }]}>
             <View style={styles.switchLabel}>
               <Text style={styles.label}>语音合成</Text>
               <Text style={styles.hint}>开启后 AI 回复将播放语音</Text>
@@ -373,43 +436,30 @@ export default function ParentSettingsScreen() {
 
         {/* 数据管理 */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>💾 数据管理</Text>
-
-          <TouchableOpacity style={styles.actionRow} activeOpacity={0.7} onPress={openExportModal}>
-            <Text style={styles.actionIcon}>📤</Text>
-            <View style={styles.actionInfo}>
-              <Text style={styles.actionTitle}>导出数据备份</Text>
-              <Text style={styles.actionDesc}>导出为 .petgrowth 加密文件</Text>
+          <View style={styles.sectionHeader}>
+            <View style={[styles.sectionIconWrap, { backgroundColor: Colors.infoLight }]}>
+              <Ionicons name="server-outline" size={18} color={Colors.info} />
             </View>
-            <Text style={styles.actionArrow}>›</Text>
-          </TouchableOpacity>
+            <Text style={styles.sectionTitle}>数据管理</Text>
+          </View>
 
-          <TouchableOpacity style={styles.actionRow} activeOpacity={0.7} onPress={handleImportData}>
-            <Text style={styles.actionIcon}>📥</Text>
-            <View style={styles.actionInfo}>
-              <Text style={styles.actionTitle}>导入数据恢复</Text>
-              <Text style={styles.actionDesc}>从备份文件恢复全部数据</Text>
-            </View>
-            <Text style={styles.actionArrow}>›</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.actionRow} activeOpacity={0.7} onPress={() => setPwdModal(true)}>
-            <Text style={styles.actionIcon}>🔑</Text>
-            <View style={styles.actionInfo}>
-              <Text style={styles.actionTitle}>修改家长密码</Text>
-              <Text style={styles.actionDesc}>更换进入家长端的密码</Text>
-            </View>
-            <Text style={styles.actionArrow}>›</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.actionRow} activeOpacity={0.7} onPress={handleResetData}>
-            <Text style={styles.actionIcon}>🗑️</Text>
-            <View style={styles.actionInfo}>
-              <Text style={styles.actionTitle}>重置所有数据</Text>
-              <Text style={styles.actionDesc}>谨慎操作，将清除所有本地数据</Text>
-            </View>
-            <Text style={styles.actionArrow}>›</Text>
-          </TouchableOpacity>
+          {DATA_ACTIONS.map((action, idx) => (
+            <TouchableOpacity
+              key={action.label}
+              style={[styles.actionRow, idx === DATA_ACTIONS.length - 1 && { borderBottomWidth: 0 }]}
+              activeOpacity={0.7}
+              onPress={action.onPress}
+            >
+              <View style={[styles.actionIconWrap, action.danger && { backgroundColor: Colors.errorLight }]}>
+                <Ionicons name={action.icon} size={18} color={action.danger ? Colors.error : Colors.neutral600} />
+              </View>
+              <View style={styles.actionInfo}>
+                <Text style={[styles.actionTitle, action.danger && { color: Colors.error }]}>{action.label}</Text>
+                <Text style={styles.actionDesc}>{action.desc}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={Colors.neutral300} />
+            </TouchableOpacity>
+          ))}
         </View>
 
         {/* 关于 */}
@@ -424,7 +474,7 @@ export default function ParentSettingsScreen() {
           </View>
         </View>
 
-        <View style={{ height: 30 }} />
+        <View style={{ height: Spacing[6] }} />
       </ScrollView>
 
       {/* 修改家长密码弹窗 */}
@@ -521,154 +571,119 @@ export default function ParentSettingsScreen() {
 
       {exporting ? (
         <View style={styles.exportOverlay}>
-          <ActivityIndicator size="large" color="#FF6B6B" />
+          <ActivityIndicator size="large" color={Colors.primary500} />
           <Text style={styles.exportText}>正在导出…</Text>
         </View>
       ) : null}
+
+      {/* 通用提示弹窗 */}
+      <AppModal state={modal} onClose={hideModal} />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bgPrimary },
-  content: { padding: Spacing[4], paddingTop: Spacing[2] + 2 },
+  content: { padding: Spacing[4], paddingTop: Spacing[3] },
+
   saveBanner: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm,
     backgroundColor: Colors.primary500,
     padding: Spacing.md,
-    borderRadius: BorderRadius.lg,
-    marginBottom: Spacing.md,
-    alignItems: 'center',
+    borderRadius: BorderRadius['2xl'],
+    marginBottom: Spacing[3],
+    ...Shadows.sm,
   },
-  saveBannerText: { color: Colors.bgCard, fontSize: Typography.base, fontWeight: 'bold' },
+  saveBannerText: { color: Colors.bgCard, fontSize: Typography.base, fontWeight: '700' },
+
   section: {
     backgroundColor: Colors.bgCard,
     borderRadius: BorderRadius['3xl'],
-    padding: Spacing[4] + 2,
-    marginBottom: Spacing[3] + 2,
-    ...Shadows.xs,
+    padding: Spacing[4],
+    marginBottom: Spacing[3],
+    ...Shadows.sm,
+  },
+  sectionHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
+    marginBottom: Spacing[4],
+  },
+  sectionIconWrap: {
+    width: 32, height: 32, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center',
   },
   sectionTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: Colors.neutral900,
-    marginBottom: 16,
+    fontSize: Typography.base + 1, fontWeight: '700', color: Colors.neutral900,
   },
-  field: { marginBottom: Spacing[4] + 2 },
+
+  field: { marginBottom: Spacing[4] },
   label: {
-    fontSize: Typography.sm + 1,
-    fontWeight: '600',
-    color: Colors.neutral700,
+    fontSize: Typography.sm + 1, fontWeight: '600', color: Colors.neutral700,
     marginBottom: Spacing.sm,
   },
   input: {
-    borderWidth: 1.5,
-    borderColor: Colors.neutral200,
+    borderWidth: 1.5, borderColor: Colors.neutral200,
     borderRadius: BorderRadius.input,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm + 3,
-    fontSize: Typography.base,
-    color: Colors.neutral900,
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm + 3,
+    fontSize: Typography.base, color: Colors.neutral900,
     backgroundColor: Colors.neutral50,
   },
-  secretInput: {
-    letterSpacing: 2,
-  },
-  hint: {
-    fontSize: Typography.xs,
-    color: Colors.neutral400,
-    marginTop: Spacing.xs,
-  },
-  rowBtns: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-  },
-  selectChip: {
-    flex: 1,
-    paddingVertical: Spacing.sm + 1,
-    borderRadius: BorderRadius.button,
-    alignItems: 'center',
-    backgroundColor: Colors.neutral100,
-    borderWidth: 1,
-    borderColor: Colors.neutral200,
-  },
-  selected: {
-    borderColor: Colors.primary500,
-    backgroundColor: Colors.primary50,
-  },
-  selectText: {
-    fontSize: Typography.sm + 1,
-    fontWeight: '500',
-    color: Colors.neutral500,
-  },
-  selectedText: {
-    color: Colors.primary500,
-    fontWeight: '700',
-  },
-  sliderRow: {
-    flexDirection: 'row',
-    gap: Spacing.sm + 2,
-    justifyContent: 'center',
-  },
-  sliderDot: {
-    width: Spacing[12] + 2,
-    height: Spacing[8] + 2,
-    borderRadius: (Spacing[12] + 2) / 2,
-    backgroundColor: Colors.neutral200,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sliderActive: {
-    backgroundColor: Colors.primary500,
-  },
-  sliderText: {
-    fontSize: Typography.sm + 1,
-    fontWeight: '600',
-    color: Colors.neutral500,
-  },
-  switchField: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: Spacing.sm + 2,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.neutral100,
-    marginBottom: Spacing.md,
-  },
-  switchLabel: {
-    flex: 1,
-    marginRight: Spacing.sm + 4,
-  },
+  secretInput: { letterSpacing: 2 },
+  hint: { fontSize: Typography.xs, color: Colors.neutral400, marginTop: Spacing.xs },
 
-  // 操作行样式
-  actionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: Spacing.md + 5,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.neutral100,
+  rowBtns: { flexDirection: 'row', gap: Spacing.sm },
+  selectChip: {
+    flex: 1, paddingVertical: Spacing.sm + 1,
+    borderRadius: BorderRadius.button, alignItems: 'center',
+    backgroundColor: Colors.neutral100, borderWidth: 1, borderColor: Colors.neutral200,
   },
-  actionIcon: { fontSize: Typography['3xl'] - 2 },
-  actionInfo: { flex: 1, marginLeft: Spacing.sm },
+  selected: { borderColor: Colors.primary500, backgroundColor: Colors.primary50 },
+  selectText: { fontSize: Typography.sm + 1, fontWeight: '500', color: Colors.neutral500 },
+  selectedText: { color: Colors.primary500, fontWeight: '700' },
+
+  sliderRow: { flexDirection: 'row', gap: Spacing.sm + 2, justifyContent: 'center' },
+  sliderDot: {
+    flex: 1, height: Spacing[8] + 2,
+    borderRadius: BorderRadius.button,
+    backgroundColor: Colors.neutral200,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  sliderActive: { backgroundColor: Colors.primary500 },
+  sliderText: { fontSize: Typography.sm + 1, fontWeight: '600', color: Colors.neutral500 },
+
+  switchField: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingVertical: Spacing.sm + 2,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Colors.neutral100,
+    marginBottom: Spacing.sm,
+  },
+  switchLabel: { flex: 1, marginRight: Spacing.md },
+
+  actionRow: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing[3],
+    paddingVertical: Spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Colors.neutral100,
+  },
+  actionIconWrap: {
+    width: 36, height: 36, borderRadius: 10,
+    backgroundColor: Colors.neutral100,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  actionInfo: { flex: 1 },
   actionTitle: { fontSize: Typography.base, fontWeight: '600', color: Colors.neutral900 },
   actionDesc: { fontSize: Typography.xs, color: Colors.neutral400, marginTop: 1 },
-  actionArrow: { fontSize: Typography.xl + 2, color: Colors.neutral300 },
 
-  aboutBox: { alignItems: 'center', paddingTop: Spacing.sm },
-  aboutLogo: { fontSize: Typography['2xl'] + 2, fontWeight: 'bold', color: Colors.neutral900 },
+  aboutBox: { alignItems: 'center', paddingVertical: Spacing.sm },
+  aboutLogo: { fontSize: Typography['2xl'], fontWeight: '800', color: Colors.neutral900 },
   aboutVersion: { fontSize: Typography.xs, color: Colors.neutral400, marginTop: Spacing.xs },
   aboutDesc: {
-    fontSize: Typography.xs,
-    color: Colors.neutral400,
-    textAlign: 'center',
-    lineHeight: Typography.base + 7,
-    marginTop: Spacing.sm,
+    fontSize: Typography.xs, color: Colors.neutral400,
+    textAlign: 'center', lineHeight: Typography.base + 7, marginTop: Spacing.sm,
   },
 
   exportOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(255,255,255,0.85)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: 'center', alignItems: 'center',
   },
   exportText: { marginTop: Spacing.sm, color: Colors.neutral600, fontSize: Typography.sm + 1 },
 });

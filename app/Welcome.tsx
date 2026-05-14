@@ -10,7 +10,7 @@ export default function WelcomeScreen() {
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={['#FFF5F7', '#F0FAFF', '#FFF9E6']}
+        colors={[Colors.bgPinkLight, Colors.bgBlueSoft, Colors.bgCreamSoft]}
         style={styles.gradient}
       >
         <View style={styles.logoArea}>
@@ -28,7 +28,7 @@ export default function WelcomeScreen() {
           <TouchableOpacity
             onPress={() => router.push({ pathname: '/SetupFamily', params: { fresh: '1' } })}
             activeOpacity={0.85}
-            style={{ borderRadius: 20, overflow: 'hidden' }}
+            style={styles.primaryBtnWrap}
           >
             <LinearGradient colors={[Colors.primary500, Colors.primary400]} style={styles.primaryBtn} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
               <Text style={styles.primaryBtnText}>✨ 创建家庭</Text>
@@ -53,18 +53,19 @@ export default function WelcomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  gradient: { flex: 1, paddingHorizontal: 32, justifyContent: 'center' },
-  logoArea: { alignItems: 'center', marginBottom: 60 },
-  emoji: { fontSize: 80, marginBottom: 16 },
-  title: { fontSize: 36, fontWeight: 'bold', color: Colors.neutral900, letterSpacing: 2 },
-  subtitle: { fontSize: 16, color: Colors.neutral400, marginTop: 10 },
-  decoRow: { flexDirection: 'row', gap: 12, marginTop: 24 },
-  decoEmoji: { fontSize: 28 },
-  buttonArea: { gap: 14 },
-  primaryBtn: { paddingVertical: 16, alignItems: 'center', shadowColor: Colors.primary500, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 6 },
-  primaryBtnText: { color: Colors.bgCard, fontSize: 18, fontWeight: 'bold' },
-  secondaryBtn: { paddingVertical: 14, borderRadius: 20, borderWidth: 2, borderColor: Colors.neutral300, backgroundColor: Colors.bgCard, alignItems: 'center' },
-  secondaryBtnText: { color: Colors.neutral500, fontSize: 15, fontWeight: '500' },
-  footer: { marginTop: 50, alignItems: 'center' },
-  footerText: { color: Colors.neutral400, fontSize: 13, textAlign: 'center', lineHeight: 20 },
+  gradient: { flex: 1, paddingHorizontal: Spacing[8], justifyContent: 'center' },
+  logoArea: { alignItems: 'center', marginBottom: Spacing[16] - 4 },
+  emoji: { fontSize: Typography['5xl'] * 2.2, marginBottom: Spacing[4] },
+  title: { fontSize: Typography['5xl'], fontWeight: 'bold', color: Colors.neutral900, letterSpacing: 2 },
+  subtitle: { fontSize: Typography.lg, color: Colors.neutral400, marginTop: Spacing['2.5'] },
+  decoRow: { flexDirection: 'row', gap: Spacing[3], marginTop: Spacing[6] },
+  decoEmoji: { fontSize: Typography['4xl'] },
+  buttonArea: { gap: Spacing['3.5'] },
+  primaryBtnWrap: { borderRadius: BorderRadius['2xl'] + 2, overflow: 'hidden' },
+  primaryBtn: { paddingVertical: Spacing[4], alignItems: 'center', shadowColor: Colors.primary500, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 6 },
+  primaryBtnText: { color: Colors.bgCard, fontSize: Typography.xl, fontWeight: 'bold' },
+  secondaryBtn: { paddingVertical: Spacing['3.5'], borderRadius: BorderRadius['2xl'] + 2, borderWidth: 2, borderColor: Colors.neutral300, backgroundColor: Colors.bgCard, alignItems: 'center' },
+  secondaryBtnText: { color: Colors.neutral500, fontSize: Typography.base + 1, fontWeight: '500' },
+  footer: { marginTop: Spacing[12] + 2, alignItems: 'center' },
+  footerText: { color: Colors.neutral400, fontSize: Typography.sm + 1, textAlign: 'center', lineHeight: 20 },
 });

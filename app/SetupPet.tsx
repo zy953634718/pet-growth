@@ -44,7 +44,7 @@ export default function SetupPetScreen() {
         {PET_SPECIES.map((s) => (
           <TouchableOpacity key={s.id} style={[styles.petCard, selectedSpecies === s.id && styles.petCardSelected, { borderColor: selectedSpecies === s.id ? s.color : Colors.neutral200 }]}
             onPress={() => setSelectedSpecies(s.id)} activeOpacity={0.8}>
-            <Text style={{ fontSize: 48 }}>{s.emoji}</Text>
+            <Text style={styles.petEmoji}>{s.emoji}</Text>
             <Text style={styles.petName}>{s.name}</Text>
             {selectedSpecies === s.id && <View style={[styles.checkBadge, { backgroundColor: s.color }]}><Text style={styles.checkText}>✓</Text></View>}
           </TouchableOpacity>
@@ -69,7 +69,7 @@ export default function SetupPetScreen() {
         disabled={isCreating}
       >
         {isCreating ? (
-          <ActivityIndicator color="#FFF" size="small" />
+          <ActivityIndicator color={Colors.bgCard} size="small" />
         ) : (
           <Text style={styles.completeBtnText}>🎉 开始养宠生活！</Text>
         )}
@@ -79,21 +79,22 @@ export default function SetupPetScreen() {
 }
 
 const styles = StyleSheet.create({
-  scrollContent: { padding: 24, paddingTop: 16 },
-  stepIndicator: { fontSize: 13, color: Colors.primary500, fontWeight: '600', textAlign: 'center', marginBottom: 8 },
-  title: { fontSize: 26, fontWeight: 'bold', color: Colors.neutral900, textAlign: 'center', marginBottom: 4 },
-  subtitle: { fontSize: 15, color: Colors.neutral400, textAlign: 'center', marginBottom: 24 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center', marginBottom: 16 },
-  petCard: { width: '30%', aspectRatio: 0.9, borderRadius: 18, borderWidth: 2.5, borderColor: Colors.neutral200, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.neutral50, paddingVertical: 10 },
+  scrollContent: { padding: Spacing[6], paddingTop: Spacing[4] },
+  stepIndicator: { fontSize: Typography.sm + 1, color: Colors.primary500, fontWeight: '600', textAlign: 'center', marginBottom: Spacing[2] },
+  title: { fontSize: Typography['3xl'] + 2, fontWeight: 'bold', color: Colors.neutral900, textAlign: 'center', marginBottom: Spacing[1] },
+  subtitle: { fontSize: Typography.base + 1, color: Colors.neutral400, textAlign: 'center', marginBottom: Spacing[6] },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing[3], justifyContent: 'center', marginBottom: Spacing[4] },
+  petCard: { width: '30%', aspectRatio: 0.9, borderRadius: BorderRadius['2xl'], borderWidth: 2.5, borderColor: Colors.neutral200, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.neutral50, paddingVertical: Spacing['2.5'] },
   petCardSelected: { shadowColor: Colors.primary500, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 5, transform: [{ scale: 1.04 }] },
-  petName: { marginTop: 6, fontSize: 13, fontWeight: '600', color: Colors.neutral700 },
-  checkBadge: { position: 'absolute', top: -2, right: -2, width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-  checkText: { color: Colors.bgCard, fontSize: 12, fontWeight: 'bold' },
-  descBox: { backgroundColor: '#FFF9F0', borderRadius: 14, padding: 14, alignItems: 'center', marginBottom: 20 },
-  descText: { fontSize: 14, color: '#997A33', textAlign: 'center' },
-  nameGroup: { marginBottom: 24 },
-  label: { fontSize: 16, fontWeight: '600', color: Colors.neutral800, textAlign: 'center', marginBottom: 10 },
-  input: { borderWidth: 1.5, borderColor: '#E0E0E0', borderRadius: 14, paddingHorizontal: 20, paddingVertical: 13, fontSize: 17, backgroundColor: Colors.neutral50 },
-  completeBtn: { backgroundColor: Colors.secondary300, borderRadius: 20, paddingVertical: 17, alignItems: 'center', shadowColor: Colors.secondary300, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 6 },
-  completeBtnText: { color: Colors.bgCard, fontSize: 18, fontWeight: 'bold' },
+  petEmoji: { fontSize: 48 },
+  petName: { marginTop: Spacing['1.5'], fontSize: Typography.sm + 1, fontWeight: '600', color: Colors.neutral700 },
+  checkBadge: { position: 'absolute', top: -2, right: -2, width: Spacing['5.5'], height: Spacing['5.5'], borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  checkText: { color: Colors.bgCard, fontSize: Typography.sm, fontWeight: 'bold' },
+  descBox: { backgroundColor: Colors.bgCreamWarm, borderRadius: BorderRadius.lg, padding: Spacing['3.5'], alignItems: 'center', marginBottom: Spacing[5] },
+  descText: { fontSize: Typography.base, color: Colors.textCreamWarm, textAlign: 'center' },
+  nameGroup: { marginBottom: Spacing[6] },
+  label: { fontSize: Typography.lg, fontWeight: '600', color: Colors.neutral800, textAlign: 'center', marginBottom: Spacing['2.5'] },
+  input: { borderWidth: 1.5, borderColor: Colors.borderInput, borderRadius: BorderRadius.lg, paddingHorizontal: Spacing[5], paddingVertical: Spacing['3.5'] - 1, fontSize: Typography.lg + 1, backgroundColor: Colors.neutral50 },
+  completeBtn: { backgroundColor: Colors.secondary300, borderRadius: BorderRadius['3xl'] - 2, paddingVertical: Spacing['4.5'] - 1, alignItems: 'center', shadowColor: Colors.secondary300, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 6 },
+  completeBtnText: { color: Colors.bgCard, fontSize: Typography.xl, fontWeight: 'bold' },
 });
