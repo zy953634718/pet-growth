@@ -2,6 +2,9 @@
 // 萌宠成长记 - 主题统一导出
 // ============================================================
 
+// wp/hp 快捷方式（用于 StyleSheet.create 外的场景）
+import { Dimensions } from 'react-native';
+
 export { Colors, CategoryPalette, Typography, Spacing, BorderRadius, Shadows, Breakpoints, TouchTarget, TabBarConfig } from './tokens';
 export { useResponsive, scale, moderateScaleStatic, fontSizeStatic, clamp } from './responsive';
 export {
@@ -12,9 +15,6 @@ export {
   EmptyText, ProgressBarBg, ProgressBarFill,
   ModalOverlay, ModalCard,
 } from './components';
-
-// wp/hp 快捷方式（用于 StyleSheet.create 外的场景）
-import { Dimensions } from 'react-native';
 export function wp(percentage: number): number {
   return (Dimensions.get('window').width * percentage) / 100;
 }

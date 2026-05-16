@@ -1,0 +1,38 @@
+{
+  "_comment": "Merge the 'hooks' object below into ~/.claude/settings.json. Stop hook fires after each agent turn ends; it appends a review prompt to the queue and prints a tip the user sees in CLI.",
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python C:/Users/HUAWEI/.claude/skills/hermes-agent-self-evolution/scripts/profile_manager.py review-prompt"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python C:/Users/HUAWEI/.claude/skills/hermes-agent-self-evolution/scripts/profile_manager.py show user"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python C:/Users/HUAWEI/.claude/skills/hermes-agent-self-evolution/scripts/session_archive.py reindex"
+          }
+        ]
+      }
+    ]
+  }
+}

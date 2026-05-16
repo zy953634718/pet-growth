@@ -33,10 +33,18 @@ export default function ChildTabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="home"
+        options={{
+          title: '宠物',
+          headerTitle: '我的宠物',
+          tabBarIcon: ({ color, size }) => <Ionicons name="paw" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="tasks"
         options={{
           title: '任务',
-          headerTitle: '今日任务',
+          headerTitle: '任务 & 行为',
           tabBarIcon: ({ color, size }) => <Ionicons name="checkbox-outline" size={size} color={color} />,
         }}
       />

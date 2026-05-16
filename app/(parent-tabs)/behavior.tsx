@@ -21,7 +21,7 @@ const PRESET_CATEGORIES: BehaviorCategory[] = [
 
 export default function BehaviorRuleScreen() {
   const { currentFamily, children } = useFamilyStore();
-  const { categories, rules, loadCategories, loadRules, addRule, updateRule, deleteRule, recordBehavior } = useBehaviorStore();
+  const { categories, rules, records, loadCategories, loadRules, loadRecords, addRule, updateRule, deleteRule, recordBehavior } = useBehaviorStore();
   const [activeCategory, setActiveCategory] = useState<string>('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingRule, setEditingRule] = useState<any | null>(null);
@@ -46,6 +46,13 @@ export default function BehaviorRuleScreen() {
   useEffect(() => {
     if (categories.length > 0 && !activeCategory) setActiveCategory(categories[0].id);
   }, [categories.length]);
+
+  // 加载第一个孩子的积分记录
+  useEffect(() => {
+    if (children.length > 0) {
+      loadRecords(children[0].id);
+    }
+  }, [children.length]);
 
   const displayCategories = categories.length > 0
     ? categories
@@ -184,6 +191,32 @@ export default function BehaviorRuleScreen() {
           )}
           <View style={{ height: 24 }} />
         </ScrollView>
+
+        {/* 最近评分记录 */}
+        {records.filter(r => r.rule_id).length > 0 && children.length > 0 && (
+          <View style={{ marginTop: Spacing[2], marginBottom: Spacing[4] }}>
+            <Text style={styles.sectionTitle}>📝 最近评分记录</Text>
+            {records.filter(r => r.rule_id).slice(0, 15).map((r) => {
+              const ruleName = rules.find(rl => rl.id === r.rule_id)?.name || r.reason;
+              const childName = children.find(c => c.id === r.child_id)?.name || '';
+              const isPos = r.points_change >= 0;
+              const statusText = r.approved === 0 ? '⏳' : r.approved === -1 ? '❌' : '✅';
+              return (
+                <View key={r.id} style={styles.recordRow}>
+                  <Text style={styles.recordStatus}>{statusText}</Text>
+                  <Text style={styles.recordChild}>{childName}</Text>
+                  <Text style={styles.recordName} numberOfLines={1}>{ruleName}</Text>
+                  <Text style={[styles.recordPoints, { color: isPos ? Colors.success : Colors.error }]}>
+                    {isPos ? '+' : ''}{r.points_change}
+                  </Text>
+                  <Text style={styles.recordTime}>
+                    {r.created_at ? new Date(r.created_at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : ''}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        )}
       </View>
 
       {/* 添加/编辑规则弹窗 */}
@@ -342,4 +375,26 @@ const styles = StyleSheet.create({
   emptyState: { paddingVertical: 60, alignItems: 'center', gap: Spacing[2] },
   emptyIcon: { fontSize: 48 },
   emptyText: { fontSize: Typography.sm + 1, color: Colors.neutral400 },
+
+  sectionTitle: {
+    fontSize: Typography.sm,
+    fontWeight: '700',
+    color: Colors.neutral700,
+    marginBottom: Spacing[2],
+  },
+  recordRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.bgCard,
+    borderRadius: BorderRadius.lg,
+    paddingHorizontal: Spacing[3],
+    paddingVertical: Spacing[2],
+    marginBottom: Spacing.xs,
+    gap: Spacing.xs,
+  },
+  recordStatus: { fontSize: Typography.sm, width: 24, textAlign: 'center' },
+  recordChild: { fontSize: Typography.xs, color: Colors.neutral500, minWidth: 32 },
+  recordName: { flex: 1, fontSize: Typography.sm, color: Colors.neutral800 },
+  recordPoints: { fontSize: Typography.sm, fontWeight: '700', minWidth: 40, textAlign: 'right' },
+  recordTime: { fontSize: Typography.xs, color: Colors.neutral400, width: 44, textAlign: 'right' },
 });

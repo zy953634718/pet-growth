@@ -8,6 +8,8 @@ import {
 } from '../types';
 import { dbGetAll, dbRun, dbRunTransaction } from '../db/helpers';
 import { usePetStore } from './usePetStore';
+import { useFamilyStore } from './useFamilyStore';
+import { nowCST } from '../utils/time';
 
 // ============================================================
 // Store interface
@@ -21,7 +23,7 @@ interface BehaviorState {
   // Actions
   loadCategories: (familyId: string) => Promise<void>;
   loadRules: (familyId: string) => Promise<void>;
-  loadRecords: (childId: string) => Promise<void>;
+  loadRecords: (childId: string, limit?: number) => Promise<void>;
   addCategory: (familyId: string, name: string, icon: string, color: string) => Promise<BehaviorCategory>;
   addRule: (rule: Omit<BehaviorRule, 'id' | 'created_at'>) => Promise<BehaviorRule>;
   updateRule: (ruleId: string, updates: Partial<BehaviorRule>) => Promise<void>;
@@ -67,10 +69,10 @@ export const useBehaviorStore = create<BehaviorState>()((set, get) => ({
     set({ rules, isLoading: false });
   },
 
-  loadRecords: async (childId: string) => {
+  loadRecords: async (childId: string, limit = 200) => {
     const records = await dbGetAll<PointRecord>(
-      'SELECT * FROM point_records WHERE child_id = ? ORDER BY created_at DESC LIMIT 200',
-      [childId]
+      'SELECT * FROM point_records WHERE child_id = ? ORDER BY created_at DESC LIMIT ?',
+      [childId, limit]
     );
     set({ records });
   },
@@ -147,6 +149,11 @@ export const useBehaviorStore = create<BehaviorState>()((set, get) => ({
 
     const points = customPoints ?? rule.points;
 
+    // 孩子端自评：不允许超出家长设定的分值
+    if (customPoints !== undefined && Math.abs(customPoints) > Math.abs(rule.points)) {
+      throw new Error('自评分不能超出家长设定的值');
+    }
+
     // Check daily limit (only applies to positive-point rules)
     if (rule.daily_limit > 0 && points > 0) {
       const todayPoints = await get().getTodayPointsForRule(childId, ruleId);
@@ -155,7 +162,7 @@ export const useBehaviorStore = create<BehaviorState>()((set, get) => ({
       }
     }
 
-    const approved = autoApprove && !rule.need_approve ? 1 : 0;
+    const approved = autoApprove ? 1 : 0;
     const record: PointRecord = {
       id: uuidv4(),
       child_id: childId,
@@ -165,16 +172,16 @@ export const useBehaviorStore = create<BehaviorState>()((set, get) => ({
       currency_type: 'points' as CurrencyType,
       reason: reason || rule.name,
       approved,
-      created_at: new Date().toISOString(),
+      created_at: nowCST(),
     };
 
     // 使用事务保证积分一致性
     await dbRunTransaction([
       async () => {
         await dbRun(
-          `INSERT INTO point_records (id, child_id, rule_id, points_change, currency_type, reason, approved)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          [record.id, record.child_id, record.rule_id, record.points_change, record.currency_type, record.reason, record.approved]
+          `INSERT INTO point_records (id, child_id, rule_id, points_change, currency_type, reason, approved, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [record.id, record.child_id, record.rule_id, record.points_change, record.currency_type, record.reason, record.approved, record.created_at]
         );
 
         // 仅在自动审批通过时更新孩子积分和宠物经验
@@ -190,6 +197,11 @@ export const useBehaviorStore = create<BehaviorState>()((set, get) => ({
     // 审批通过时更新宠物经验值
     if (approved === 1 && points > 0) {
       await usePetStore.getState().addPointsForChild(childId, points);
+    }
+
+    // 同步刷新 Zustand store 中的孩子积分数据（UI 及时更新）
+    if (approved === 1) {
+      await useFamilyStore.getState().refreshChildFromDb(childId);
     }
 
     set((state) => ({
@@ -235,23 +247,23 @@ export const useBehaviorStore = create<BehaviorState>()((set, get) => ({
   },
 
   getTodayRecords: async (childId: string) => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = nowCST().slice(0, 10);
     return dbGetAll<PointRecord>(
       `SELECT * FROM point_records
        WHERE child_id = ? AND approved = 1
-       AND DATE(created_at) = ?
+       AND substr(created_at, 1, 10) = ?
        ORDER BY created_at DESC`,
       [childId, today]
     );
   },
 
   getTodayPointsForRule: async (childId: string, ruleId: string) => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = nowCST().slice(0, 10);
     const rows = await dbGetAll<{ total: number }>(
       `SELECT COALESCE(SUM(points_change), 0) as total
        FROM point_records
       WHERE child_id = ? AND rule_id = ? AND approved = 1
-      AND DATE(created_at) = ?`,
+      AND substr(created_at, 1, 10) = ?`,
       [childId, ruleId, today]
     );
     return rows[0]?.total ?? 0;
@@ -267,15 +279,15 @@ export const useBehaviorStore = create<BehaviorState>()((set, get) => ({
       currency_type: currency,
       reason,
       approved: 1,
-      created_at: new Date().toISOString(),
+      created_at: nowCST(),
     };
 
     await dbRunTransaction([
       async () => {
         await dbRun(
-          `INSERT INTO point_records (id, child_id, rule_id, task_id, points_change, currency_type, reason, approved)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [record.id, record.child_id, record.rule_id, record.task_id, record.points_change, record.currency_type, record.reason, record.approved]
+          `INSERT INTO point_records (id, child_id, rule_id, task_id, points_change, currency_type, reason, approved, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [record.id, record.child_id, record.rule_id, record.task_id, record.points_change, record.currency_type, record.reason, record.approved, record.created_at]
         );
 
         // 更新孩子积分（points 类型的才更新 current_points）

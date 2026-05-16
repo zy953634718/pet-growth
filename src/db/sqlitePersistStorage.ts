@@ -19,7 +19,7 @@ export const sqlitePersistStorage: StateStorage = {
     // 从旧版 AsyncStorage 一次性迁移到 SQLite
     if (name === 'family-storage' && Platform.OS !== 'web') {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
+         
         const AsyncStorage = require('@react-native-async-storage/async-storage').default;
         const legacy = await AsyncStorage.getItem(name);
         if (legacy != null) {
@@ -69,7 +69,7 @@ export async function clearFamilySessionPersist(): Promise<void> {
     /* ignore */
   }
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+     
     const AsyncStorage = require('@react-native-async-storage/async-storage').default;
     await AsyncStorage.removeItem('family-storage');
   } catch {

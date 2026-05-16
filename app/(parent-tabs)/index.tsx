@@ -6,8 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFamilyStore } from '@/stores/useFamilyStore';
 import { usePetStore } from '@/stores/usePetStore';
 import { useTaskStore } from '@/stores/useTaskStore';
-import { MOOD_EMOJI, HEALTH_EMOJI } from '@/types';
-import { Pet } from '@/types';
+import { MOOD_EMOJI, HEALTH_EMOJI , Pet } from '@/types';
 import { Colors, Typography, Spacing, BorderRadius, Shadows } from '@/theme';
 import PetAvatar from '@/components/PetAvatar';
 

@@ -37,8 +37,8 @@ export default function PetAvatar({
     return (
       <Image
         source={source}
-        style={{ width: size, height: size, borderRadius: size * 0.1 }}
-        resizeMode="contain"
+        style={{ width: size, height: size, borderRadius: size / 2 }}
+        resizeMode="cover"
       />
     );
   }

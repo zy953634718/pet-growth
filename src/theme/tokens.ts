@@ -86,6 +86,58 @@ export const Colors = {
   borderMuted: '#ECECEC',        // 次级分隔
   borderMint: '#B8F5E8',         // 薄荷卡片边框
   borderCoral: '#FFD1CC',        // 珊瑚卡片边框
+
+  // ─── 魔法/暗黑主题色板（宠物页面炫酷风格）───
+  // 深空紫系
+  magicPurple50: '#F3E8FF',
+  magicPurple100: '#E9D5FF',
+  magicPurple200: '#D8B4FE',
+  magicPurple300: '#C084FC',
+  magicPurple400: '#A855F7',
+  magicPurple500: '#7C3AED',
+  magicPurple600: '#6D28D9',
+  magicPurple700: '#5B21B6',
+  magicPurple800: '#4C1D95',
+  magicPurple900: '#2E1065',
+
+  // 极光蓝系
+  magicBlue50: '#E0F2FE',
+  magicBlue100: '#BAE6FD',
+  magicBlue200: '#7DD3FC',
+  magicBlue300: '#38BDF8',
+  magicBlue400: '#0EA5E9',
+  magicBlue500: '#0284C7',
+  magicBlue600: '#0369A1',
+  magicBlue700: '#075985',
+  magicBlue800: '#0C4A6E',
+  magicBlue900: '#082F49',
+
+  // 金橙系（光环/能量）
+  magicGold50: '#FFFBEB',
+  magicGold100: '#FEF3C7',
+  magicGold200: '#FDE68A',
+  magicGold300: '#FCD34D',
+  magicGold400: '#FBBF24',
+  magicGold500: '#F59E0B',
+  magicGold600: '#D97706',
+  magicGold700: '#B45309',
+  magicGold800: '#92400E',
+  magicGold900: '#78350F',
+
+  // 暗黑背景系
+  darkBg: '#0F0E17',
+  darkSurface: '#1A1A2E',
+  darkSurfaceLight: '#16213E',
+  darkBorder: 'rgba(255,255,255,0.08)',
+  darkBorderLight: 'rgba(255,255,255,0.12)',
+  darkText: '#E2E8F0',
+  darkTextMuted: '#94A3B8',
+
+  // 毛玻璃效果色
+  glassBg: 'rgba(255,255,255,0.08)',
+  glassBgHover: 'rgba(255,255,255,0.14)',
+  glassBorder: 'rgba(255,255,255,0.10)',
+  glassBorderActive: 'rgba(255,255,255,0.20)',
 } as const;
 
 // ─── 分类色板（行为规则默认色） ──────────────────────────

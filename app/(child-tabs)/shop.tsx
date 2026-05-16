@@ -11,7 +11,7 @@ import Modal, { ModalStyles } from '@/components/Modal';
 
 type ShopTab = 'gift' | 'cosmetic' | 'privilege';
 
-const TAB_CONFIG: Array<{ key: ShopTab; label: string; icon: string }> = [
+const TAB_CONFIG: { key: ShopTab; label: string; icon: string }[] = [
   { key: 'gift', label: '礼物', icon: '🎁' },
   { key: 'cosmetic', label: '装扮', icon: '👗' },
   { key: 'privilege', label: '特权', icon: '🎫' },
@@ -172,14 +172,12 @@ export default function ShopScreen() {
         showCloseButton={false}
         maxWidth={300}
       >
-        <Text style={{ fontSize: 15, color: Colors.neutral600, textAlign: 'center', marginBottom: Spacing.lg }}>
-          {toastMessage}
-        </Text>
+        <Text style={styles.toastMessage}>{toastMessage}</Text>
         <TouchableOpacity
-          style={[ModalStyles.confirmButton, { width: '100%' }]}
+          style={styles.toastBtn}
           onPress={() => setToastVisible(false)}
         >
-          <Text style={ModalStyles.confirmButtonText}>知道了</Text>
+          <Text style={styles.toastBtnText}>知道了</Text>
         </TouchableOpacity>
       </Modal>
 
@@ -371,5 +369,22 @@ const styles = StyleSheet.create({
   exchangeArrow: {
     fontSize: Typography.base,
     color: Colors.star,
+  },
+  toastMessage: {
+    fontSize: 15,
+    color: Colors.neutral600,
+    textAlign: 'center',
+    marginBottom: Spacing.lg,
+  },
+  toastBtn: {
+    backgroundColor: Colors.primary500,
+    borderRadius: BorderRadius.button,
+    paddingVertical: Spacing.md,
+    alignItems: 'center',
+  },
+  toastBtnText: {
+    fontSize: 15,
+    color: Colors.bgCard,
+    fontWeight: '700',
   },
 });

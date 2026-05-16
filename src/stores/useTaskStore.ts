@@ -15,6 +15,7 @@ import { dbGetAll, dbGetOne, dbRun } from '../db/helpers';
 import { STREAK_REWARDS } from '../constants/evolution';
 import { useFamilyStore } from './useFamilyStore';
 import { usePetStore } from './usePetStore';
+import { nowCST } from '../utils/time';
 
 // ============================================================
 // 任务奖励结算
@@ -37,7 +38,7 @@ async function grantTaskCompletionRewards(childId: string, task: Task): Promise<
     [points, points, stars, stars, childId]
   );
 
-  const ts = new Date().toISOString();
+  const ts = nowCST();
   if (points > 0) {
     await dbRun(
       `INSERT INTO point_records (id, child_id, rule_id, task_id, points_change, currency_type, reason, approved, created_at)
@@ -60,7 +61,7 @@ async function grantTaskCompletionRewards(childId: string, task: Task): Promise<
 /** 连续打卡里程碑奖励 */
 async function grantStreakMilestoneRewards(childId: string, prevStreak: number, newStreak: number) {
   if (newStreak <= prevStreak) return;
-  const ts = new Date().toISOString();
+  const ts = nowCST();
   for (const r of STREAK_REWARDS) {
     if (newStreak < r.days || prevStreak >= r.days) continue;
     const pts = r.pointsReward ?? 0;
