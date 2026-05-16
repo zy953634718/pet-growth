@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import PointBadge from '@/components/PointBadge';
+
 import { useFamilyStore } from '@/stores/useFamilyStore';
 import { usePetStore } from '@/stores/usePetStore';
 import { useShopStore } from '@/stores/useShopStore';
@@ -24,6 +25,7 @@ const SLOT_EMOJI: Record<string, string> = {
 
 export default function ProfileScreen() {
   const router = useRouter();
+
   const currentFamily = useFamilyStore(s => s.currentFamily);
   const currentChild = useFamilyStore(s => s.currentChild);
   const pet = usePetStore(s => s.pet);
@@ -35,6 +37,8 @@ export default function ProfileScreen() {
   const unequipItem = useShopStore(s => s.unequipItem);
   const tasks = useTaskStore(s => s.tasks);
   const streaks = useTaskStore(s => s.streaks);
+
+
 
   useEffect(() => {
     if (!currentChild?.id || !pet?.id) return;
@@ -92,10 +96,14 @@ export default function ProfileScreen() {
 
         {/* 统计数据卡片 */}
         <View style={styles.statsGrid}>
-          <View style={styles.statCard}>
+          <TouchableOpacity
+            style={styles.statCard}
+            activeOpacity={0.7}
+            onPress={() => router.push({ pathname: '/PointsHistory', params: { childId: currentChild?.id ?? '' } })}
+          >
             <PointBadge type="points" amount={currentChild?.current_points ?? 0} size="medium" />
-            <Text style={styles.statLabel}>当前积分</Text>
-          </View>
+            <Text style={styles.statLabel}>当前积分 ›</Text>
+          </TouchableOpacity>
           <View style={styles.statCard}>
             <PointBadge type="stars" amount={currentChild?.current_stars ?? 0} size="medium" />
             <Text style={styles.statLabel}>当前星星</Text>
@@ -196,6 +204,7 @@ export default function ProfileScreen() {
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
+
     </SafeAreaView>
   );
 }
@@ -272,6 +281,7 @@ const styles = StyleSheet.create({
     fontSize: Typography.xl,
     fontWeight: 'bold',
     color: Colors.neutral900,
+    textAlign: 'center',
   },
   sectionBox: {
     backgroundColor: Colors.bgCard,
@@ -306,25 +316,30 @@ const styles = StyleSheet.create({
     paddingRight: Spacing[1],
   },
   equipCard: {
-    width: 80,
+    width: 88,
+    minHeight: 100,
     backgroundColor: Colors.bgPetCircle,
     borderRadius: BorderRadius.lg,
-    padding: Spacing[3],
+    paddingVertical: Spacing[3],
+    paddingHorizontal: Spacing[2],
     alignItems: 'center',
+    justifyContent: 'center',
   },
   equipCardEquipped: {
     borderWidth: 2,
     borderColor: Colors.primary400,
   },
   equipEmoji: {
-    fontSize: Typography['4xl'] + 4,
-    marginBottom: Spacing[1],
+    fontSize: Typography['2xl'],
+    textAlign: 'center',
+    marginBottom: 4,
   },
   equipName: {
-    fontSize: Typography.xs + 1,
+    fontSize: Typography.xs,
+    fontWeight: '500',
     color: Colors.neutral600,
     textAlign: 'center',
-    maxWidth: 68,
+    maxWidth: 72,
   },
   equipBadgeOn: {
     fontSize: 9,

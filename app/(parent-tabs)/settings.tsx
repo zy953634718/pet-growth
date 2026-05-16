@@ -271,14 +271,6 @@ export default function ParentSettingsScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary500]} />
         }
       >
-        {/* 保存横幅 */}
-        {hasChanges && (
-          <TouchableOpacity style={styles.saveBanner} onPress={handleSave} activeOpacity={0.85}>
-            <Ionicons name="checkmark-circle-outline" size={18} color={Colors.bgCard} />
-            <Text style={styles.saveBannerText}>点击保存设置</Text>
-          </TouchableOpacity>
-        )}
-
         {/* AI 对话配置 */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -433,6 +425,14 @@ export default function ParentSettingsScreen() {
             />
           </View>
         </View>
+
+        {/* 保存按钮：移到安全设置 > 数据管理之间 */}
+        {hasChanges && (
+          <TouchableOpacity style={styles.saveBanner} onPress={handleSave} activeOpacity={0.85}>
+            <Ionicons name="checkmark-circle-outline" size={18} color={Colors.bgCard} />
+            <Text style={styles.saveBannerText}>保存设置</Text>
+          </TouchableOpacity>
+        )}
 
         {/* 数据管理 */}
         <View style={styles.section}>

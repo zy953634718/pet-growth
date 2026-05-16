@@ -25,12 +25,10 @@ export default function Modal({
   scrollable = false,
   maxWidth = 360,
 }: ModalProps) {
-  if (!visible) return null;
-
   const ContentWrapper = scrollable ? ScrollView : View;
   const wrapperProps = scrollable
-    ? { showsVerticalScrollIndicator: false, contentContainerStyle: styles.modalCard }
-    : { style: styles.modalCard };
+    ? { showsVerticalScrollIndicator: false, contentContainerStyle: styles.modalCard, stickyHeaderIndices: title ? [0] : undefined }
+    : { style: [styles.modalCard, styles.modalCardNonScrollable] };
 
   return (
     <RNModal
@@ -38,6 +36,7 @@ export default function Modal({
       transparent
       animationType="fade"
       onRequestClose={onClose}
+      statusBarTranslucent
     >
       <TouchableOpacity
         style={styles.overlay}
@@ -52,7 +51,7 @@ export default function Modal({
           {/* 标题栏 */}
           {(title || showCloseButton) && (
             <View style={styles.header}>
-              {title && <View style={styles.titleFlex}>{title && <Text style={styles.title}>{title}</Text>}</View>}
+              {title && <View style={styles.titleFlex}><Text style={styles.title}>{title}</Text></View>}
               {showCloseButton && (
                 <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
                   <Text style={styles.closeText}>✕</Text>
@@ -87,6 +86,10 @@ const styles = StyleSheet.create({
   },
   modalCard: {
     padding: Spacing.modalPadding,
+  },
+  modalCardNonScrollable: {
+    padding: Spacing.modalPadding,
+    maxHeight: '70%',
   },
   header: {
     flexDirection: 'row',

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { Platform } from 'react-native';
 import { v4 as uuidv4 } from 'uuid';
+import * as Crypto from 'expo-crypto';
 import { Family, Child } from '../types';
 import { wipeAllUserData } from '../db/database';
 import { dbGetAll, dbGetOne, dbRun } from '../db/helpers';
@@ -57,15 +58,22 @@ export const useFamilyStore = create<FamilyState>()(
 
       createFamily: async (name: string, parentPassword: string) => {
         const id = uuidv4();
+        const salt = uuidv4().slice(0, 8);
+        const hashedPassword = await Crypto.digestStringAsync(
+          Crypto.CryptoDigestAlgorithm.SHA256,
+          parentPassword + salt
+        );
+        const pinLength = parentPassword.length;
         const family: Family = {
           id,
           name,
-          parent_password: parentPassword,
+          parent_password: `${salt}:${hashedPassword}`,
+          parent_pin_length: pinLength,
           created_at: new Date().toISOString(),
         };
         await dbRun(
-          'INSERT INTO family (id, name, parent_password) VALUES (?, ?, ?)',
-          [family.id, family.name, family.parent_password]
+          'INSERT INTO family (id, name, parent_password, parent_pin_length) VALUES (?, ?, ?, ?)',
+          [family.id, family.name, family.parent_password, family.parent_pin_length]
         );
         set({
           currentFamily: family,
@@ -126,11 +134,49 @@ export const useFamilyStore = create<FamilyState>()(
 
       authenticateParent: async (password: string) => {
         const { currentFamily } = get();
-        if (!currentFamily) return false;
+        if (!currentFamily) {
+          // 尝试从 DB 重新获取（persist 已过滤 password 字段）
+          const family = await dbGetOne<Family>('SELECT id FROM family LIMIT 1');
+          if (!family) return false;
+          await get().loadFamily(family.id);
+          const updated = get().currentFamily;
+          if (!updated) return false;
+          return get().authenticateParent(password);
+        }
 
-        if (password === currentFamily.parent_password) {
-          set({ isAuthenticated: true, currentRole: 'parent' });
-          return true;
+        // 从 DB 获取最新密码记录（内存中的 password 可能被 persist partialize 清空）
+        const family = await dbGetOne<Family>('SELECT * FROM family WHERE id = ?', [currentFamily.id]);
+        if (!family) return false;
+
+        const stored = family.parent_password;
+        const isHashed = stored.includes(':');
+
+        if (isHashed) {
+          const [salt, hash] = stored.split(':');
+          const inputHash = await Crypto.digestStringAsync(
+            Crypto.CryptoDigestAlgorithm.SHA256,
+            password + salt
+          );
+          if (inputHash === hash) {
+            set({ isAuthenticated: true, currentRole: 'parent' });
+            return true;
+          }
+        } else {
+          // 兼容旧版明文密码 → 自动迁移为哈希
+          if (stored === password) {
+            const salt = uuidv4().slice(0, 8);
+            const hashedPassword = await Crypto.digestStringAsync(
+              Crypto.CryptoDigestAlgorithm.SHA256,
+              password + salt
+            );
+            const pinLen = stored.length;
+            await dbRun(
+              'UPDATE family SET parent_password = ?, parent_pin_length = ? WHERE id = ?',
+              [`${salt}:${hashedPassword}`, pinLen, family.id]
+            );
+            set({ isAuthenticated: true, currentRole: 'parent' });
+            return true;
+          }
         }
         return false;
       },
@@ -188,15 +234,43 @@ export const useFamilyStore = create<FamilyState>()(
 
       updateParentPassword: async (oldPassword: string, newPassword: string) => {
         const { currentFamily } = get();
-        if (!currentFamily || currentFamily.parent_password !== oldPassword) return false;
+        if (!currentFamily) return false;
         if (newPassword.length < 4) return false;
 
-        await dbRun('UPDATE family SET parent_password = ? WHERE id = ?', [
-          newPassword,
-          currentFamily.id,
-        ]);
+        // 从 DB 获取最新密码记录
+        const family = await dbGetOne<Family>('SELECT * FROM family WHERE id = ?', [currentFamily.id]);
+        if (!family) return false;
+
+        // 验证旧密码（兼容新旧格式）
+        const stored = family.parent_password;
+        const isHashed = stored.includes(':');
+        let valid = false;
+        if (isHashed) {
+          const [salt, hash] = stored.split(':');
+          const inputHash = await Crypto.digestStringAsync(
+            Crypto.CryptoDigestAlgorithm.SHA256,
+            oldPassword + salt
+          );
+          valid = inputHash === hash;
+        } else {
+          valid = stored === oldPassword;
+        }
+        if (!valid) return false;
+
+        // 哈希新密码
+        const newSalt = uuidv4().slice(0, 8);
+        const newHash = await Crypto.digestStringAsync(
+          Crypto.CryptoDigestAlgorithm.SHA256,
+          newPassword + newSalt
+        );
+        const hashedNew = `${newSalt}:${newHash}`;
+
+        await dbRun(
+          'UPDATE family SET parent_password = ?, parent_pin_length = ? WHERE id = ?',
+          [hashedNew, newPassword.length, family.id]
+        );
         set({
-          currentFamily: { ...currentFamily, parent_password: newPassword },
+          currentFamily: { ...currentFamily, parent_password: hashedNew, parent_pin_length: newPassword.length },
         });
         return true;
       },

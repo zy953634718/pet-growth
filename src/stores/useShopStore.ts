@@ -44,10 +44,24 @@ async function deductForPurchase(childId: string, priceType: CurrencyType, amoun
   }
 }
 
-function generateRedeemCode(): string {
+/** 生成唯一兑换码（M-04 修复：生成后校验 DB 唯一性，碰撞时重试最多 5 次） */
+async function generateRedeemCode(): Promise<string> {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  for (let attempt = 0; attempt < 5; attempt++) {
+    let code = '';
+    for (let i = 0; i < 6; i++) {
+      code += chars[Math.floor(Math.random() * chars.length)];
+    }
+    // 检查唯一性
+    const exists = await dbGetOne<{ id: string }>(
+      'SELECT id FROM purchases WHERE redeem_code = ?',
+      [code]
+    );
+    if (!exists) return code;
+  }
+  // 5 次碰撞后提升长度重试
   let code = '';
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 8; i++) {
     code += chars[Math.floor(Math.random() * chars.length)];
   }
   return code;
@@ -75,6 +89,8 @@ interface ShopState {
   getOwnedItems: (petId: string, slotType?: SlotType) => Promise<PetEquipment[]>;
   getEquippedItems: (petId: string) => Promise<PetEquipment[]>;
   loadOwnedEquipments: (petId: string) => Promise<void>;
+  /** 积分兑换星星：100 积分 = 1 星星 */
+  exchangePointsForStars: (childId: string, pointsAmount: number) => Promise<void>;
 }
 
 export const useShopStore = create<ShopState>()((set) => ({
@@ -190,14 +206,25 @@ export const useShopStore = create<ShopState>()((set) => ({
     const isGift = item.item_type === 'gift';
     const now = new Date().toISOString();
     const purchaseId = uuidv4();
-    const redeemCode = isGift ? generateRedeemCode() : null;
+    const redeemCode = isGift ? await generateRedeemCode() : null;
     const status: RedemptionStatus = isGift ? 'pending' : 'redeemed';
     let newEquipment: PetEquipment | null = null;
     const eqId = uuidv4();
 
     await dbRunTransaction([
-      // 原子货币扣减
-      () => deductForPurchase(childId, item.price_type, item.price, reason),
+      // I-04 修复：事务内重新查询商品最新价格，防止价格在用户确认后被修改
+      async () => {
+        const latest = await dbGetOne<ShopItem>('SELECT * FROM shop_items WHERE id = ?', [itemId]);
+        if (!latest) throw new Error('商品已下架');
+        if (latest.stock !== -1 && latest.stock <= 0) throw new Error('该商品已售罄');
+        const price = latest.price;
+        const priceType = latest.price_type;
+        // 如果价格已变化，提示用户
+        if (price !== item.price || priceType !== item.price_type) {
+          throw new Error(`商品价格已更新为 ${price} ${priceType === 'points' ? '积分' : '星星'}`);
+        }
+        await deductForPurchase(childId, priceType, price, reason);
+      },
       // 原子库存扣减：库存为 -1 表示无限
       async () => {
         if (item.stock !== -1) {
@@ -277,6 +304,40 @@ export const useShopStore = create<ShopState>()((set) => ({
         p.id === purchaseId ? { ...p, status: 'redeemed' as RedemptionStatus, redeemed_at: now } : p
       ),
     }));
+  },
+
+  exchangePointsForStars: async (childId: string, pointsAmount: number) => {
+    if (pointsAmount % 100 !== 0) throw new Error('积分数量需为 100 的倍数');
+    const starsToAward = pointsAmount / 100;
+    const now = new Date().toISOString();
+
+    // 原子兑换：扣减积分 + 增加星星
+    const db = getDatabase();
+    const result = await db.runAsync(
+      `UPDATE children SET current_points = current_points - ?, current_stars = current_stars + ?, total_stars = total_stars + ? WHERE id = ? AND current_points >= ?`,
+      [pointsAmount, starsToAward, starsToAward, childId, pointsAmount]
+    );
+    if (result.changes === 0) throw new Error('积分不足');
+
+    // 记录积分支出
+    const rid = uuidv4();
+    await dbRun(
+      `INSERT INTO point_records (id, child_id, rule_id, task_id, points_change, currency_type, reason, approved, created_at)
+       VALUES (?, ?, NULL, NULL, ?, 'points', ?, 1, ?)`,
+      [rid, childId, -pointsAmount, `积分兑换 ${starsToAward} 颗星星`, now]
+    );
+
+    // 记录星星收入
+    const rid2 = uuidv4();
+    await dbRun(
+      `INSERT INTO point_records (id, child_id, rule_id, task_id, points_change, currency_type, reason, approved, created_at)
+       VALUES (?, ?, NULL, NULL, ?, 'stars', ?, 1, ?)`,
+      [rid2, childId, starsToAward, `积分兑换 ${starsToAward} 颗星星`, now]
+    );
+
+    // 刷新孩子数据
+    const { useFamilyStore } = await import('./useFamilyStore');
+    await useFamilyStore.getState().refreshChildFromDb(childId);
   },
 
   equipItem: async (petId: string, itemId: string, slotType: SlotType) => {

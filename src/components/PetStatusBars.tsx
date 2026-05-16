@@ -12,11 +12,13 @@ interface PetStatusBarsProps {
   compact?: boolean;
 }
 
+// D-01 修复：颜色阈值对齐到类型定义 mood 分级 [90/70/50/30]
 function getStatusColor(value: number): string {
-  if (value >= 70) return Colors.success;
-  if (value >= 40) return Colors.star;
-  if (value >= 20) return Colors.warning;
-  return Colors.error;
+  if (value >= 90) return Colors.success;     // excited
+  if (value >= 70) return Colors.star;         // happy
+  if (value >= 50) return Colors.warning;      // normal
+  if (value >= 30) return Colors.warningDark;  // unhappy
+  return Colors.error;                         // sad
 }
 
 export default function PetStatusBars({

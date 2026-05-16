@@ -61,7 +61,7 @@ async function spendStarsForCare(childId: string, amount: number, reason: string
 function diffHours(from: string, to?: string): number {
   const fromTime = new Date(from).getTime();
   const toTime = (to ? new Date(to) : new Date()).getTime();
-  return (toTime - fromTime) / (1000 * 60 * 60);
+  return Math.max(0, (toTime - fromTime) / (1000 * 60 * 60));
 }
 
 // ============================================================
@@ -74,6 +74,8 @@ interface PetState {
   isLoading: boolean;
   justEvolved: boolean;
   evolvedToStage: number;
+  /** 当前可手动升级的次数 */
+  pendingLevelUps: number;
 
   loadPet: (childId: string) => Promise<void>;
   createPet: (childId: string, speciesId: string, name: string) => Promise<Pet>;
@@ -85,12 +87,18 @@ interface PetState {
   healPet: () => Promise<void>;
   petPet: () => Promise<void>;
   calculateDecay: () => Promise<void>;
-  addPoints: (amount: number) => Promise<{ leveled: boolean; evolved: boolean; newLevel: number; newStage: number }>;
+  /** 仅增加经验，不再自动升级 */
+  addPoints: (amount: number) => Promise<void>;
   checkEvolution: () => Promise<{ evolved: boolean; oldStage: number; newStage: number }>;
   triggerRunaway: () => Promise<void>;
   returnFromRunaway: (usePoints: boolean) => Promise<boolean>;
   clearEvolvedFlag: () => void;
+  /** 增加宠物经验（来自任务/行为），不自动升级 */
   addPointsForChild: (childId: string, amount: number) => Promise<void>;
+  /** 手动升级一次，每次升一级 */
+  manualLevelUp: (childId: string) => Promise<{ leveled: boolean; evolved: boolean; newLevel: number; newStage: number }>;
+  /** 检查当前经验可升几级 */
+  checkPendingLevelUps: () => Promise<void>;
   loadCollection: (childId: string) => Promise<void>;
   saveToCollection: (childId: string) => Promise<void>;
   adoptNewPet: (childId: string, speciesId: string, petName: string) => Promise<Pet>;
@@ -103,6 +111,7 @@ export const usePetStore = create<PetState>()((set, get) => ({
   isLoading: false,
   justEvolved: false,
   evolvedToStage: 0,
+  pendingLevelUps: 0,
 
   loadPet: async (childId: string) => {
     set({ isLoading: true });
@@ -126,8 +135,10 @@ export const usePetStore = create<PetState>()((set, get) => ({
         stage: h.stage,
       }));
       set({ pet: activePet, evolutionHistory, isLoading: false });
+      // 检查可升级次数
+      get().checkPendingLevelUps();
     } else {
-      set({ pet: null, evolutionHistory: [], isLoading: false });
+      set({ pet: null, evolutionHistory: [], pendingLevelUps: 0, isLoading: false });
     }
   },
 
@@ -387,9 +398,12 @@ export const usePetStore = create<PetState>()((set, get) => ({
     }
     const newMoodType = calcMoodType(Math.round(newMoodValue));
 
+    // M-01 修复：按实际日历日计算疏忽天数，不再每次 tick +1
+    const hoursSinceLastInteraction = Math.min(hoursSinceFed, hoursSincePlay);
+    const daysSinceLastInteraction = Math.floor(hoursSinceLastInteraction / 24);
     let newNeglectDays = pet.consecutive_neglect_days;
-    if (hoursSinceFed >= 24 && hoursSincePlay >= 24) {
-      newNeglectDays += 1;
+    if (daysSinceLastInteraction >= 1) {
+      newNeglectDays = Math.max(pet.consecutive_neglect_days, daysSinceLastInteraction);
     } else {
       newNeglectDays = 0;
     }
@@ -434,72 +448,29 @@ export const usePetStore = create<PetState>()((set, get) => ({
     }));
   },
 
-  // BUG-10 修复：升级循环中逐级记录进化，不遗漏中间阶段
+  /** 仅增加宠物经验，不再自动升级。用户需手动触发 manualLevelUp() */
   addPoints: async (amount: number) => {
     const { pet } = get();
-    if (!pet || pet.ran_away_at) {
-      return { leveled: false, evolved: false, newLevel: pet?.level ?? 1, newStage: pet?.current_stage ?? 1 };
-    }
+    if (!pet || pet.ran_away_at) return;
 
-    let newPoints = pet.current_points + amount;
-    let newLevel = pet.level;
-    let leveled = false;
-    let evolved = false;
-    const evolutionRecords: number[] = [];
-
-    while (newLevel < 8) {
-      const needed = getPointsToNextLevel(newLevel);
-      if (needed === 0) break;
-      if (newPoints >= needed) {
-        newPoints -= needed;
-        newLevel += 1;
-        leveled = true;
-        const prevStage = getStageForLevel(newLevel - 1);
-        const nextStage = getStageForLevel(newLevel);
-        if (nextStage > prevStage) {
-          evolutionRecords.push(nextStage);
-          evolved = true;
-        }
-      } else {
-        break;
-      }
-    }
-
-    if (newLevel >= 8) newPoints = 0;
-
-    const newStage = getStageForLevel(newLevel);
-    const newPointsToNext = getPointsToNextLevel(newLevel);
+    const newPoints = pet.current_points + amount;
+    const newPointsToNext = getPointsToNextLevel(pet.level);
 
     await dbRun(
-      `UPDATE pets SET current_points = ?, level = ?,
-        points_to_next_level = ?, current_stage = ? WHERE id = ?`,
-      [newPoints, newLevel, newPointsToNext, newStage, pet.id]
+      'UPDATE pets SET current_points = ?, points_to_next_level = ? WHERE id = ?',
+      [newPoints, newPointsToNext, pet.id]
     );
 
-    for (const stage of evolutionRecords) {
-      await dbRun(
-        'INSERT INTO evolution_history (id, pet_id, stage) VALUES (?, ?, ?)',
-        [uuidv4(), pet.id, stage]
-      );
-    }
-
-    const finalStage = evolutionRecords[evolutionRecords.length - 1] ?? newStage;
-
     set((state) => ({
-      pet: state.pet ? {
-        ...state.pet,
-        current_points: newPoints,
-        level: newLevel,
-        points_to_next_level: newPointsToNext,
-        current_stage: newStage,
-      } : null,
-      justEvolved: evolved,
-      evolvedToStage: evolved ? finalStage : state.evolvedToStage,
+      pet: state.pet ? { ...state.pet, current_points: newPoints, points_to_next_level: newPointsToNext } : null,
     }));
 
-    return { leveled, evolved, newLevel, newStage };
+    // 检查现在能升几级
+    await get().checkPendingLevelUps();
   },
 
+  /** @deprecated 进化逻辑已统一集成在 addPoints() / addPointsForChild() 中，
+   * 单独调用此方法可能导致进化历史重复记录。请优先使用 addPoints() 流程。 */
   checkEvolution: async () => {
     const { pet } = get();
     if (!pet) return { evolved: false, oldStage: 1, newStage: 1 };
@@ -570,9 +541,9 @@ export const usePetStore = create<PetState>()((set, get) => ({
     set({ justEvolved: false, evolvedToStage: 0 });
   },
 
+  /** 仅增加宠物经验，不自动升级。升级需调用 manualLevelUp() */
   addPointsForChild: async (childId: string, amount: number) => {
     if (amount <= 0) return;
-    // 查询活跃宠物（排除已保存到图鉴的），与 loadPet 逻辑一致
     const allPets = await dbGetAll<Pet>('SELECT * FROM pets WHERE child_id = ? ORDER BY created_at DESC', [childId]);
     const collectedRows = await dbGetAll<{ pet_id: string }>(
       'SELECT pet_id FROM pet_collection WHERE child_id = ?', [childId]
@@ -581,53 +552,110 @@ export const usePetStore = create<PetState>()((set, get) => ({
     const pet = allPets.find(p => !collectedPetIds.has(p.id)) || null;
     if (!pet || pet.ran_away_at) return;
 
-    let newPoints = pet.current_points + amount;
-    let newLevel = pet.level;
-    let evolved = false;
-    const evolutionRecords: number[] = [];
-
-    while (newLevel < 8) {
-      const needed = getPointsToNextLevel(newLevel);
-      if (needed === 0) break;
-      if (newPoints >= needed) {
-        newPoints -= needed;
-        newLevel += 1;
-        const prevStage = getStageForLevel(newLevel - 1);
-        const nextStage = getStageForLevel(newLevel);
-        if (nextStage > prevStage) {
-          evolutionRecords.push(nextStage);
-          evolved = true;
-        }
-      } else {
-        break;
-      }
-    }
-
-    if (newLevel >= 8) newPoints = 0;
-
-    const newStage = getStageForLevel(newLevel);
-    const newPointsToNext = getPointsToNextLevel(newLevel);
+    const newPoints = pet.current_points + amount;
+    const newPointsToNext = getPointsToNextLevel(pet.level);
 
     await dbRun(
-      `UPDATE pets SET current_points = ?, level = ?,
-        points_to_next_level = ?, current_stage = ? WHERE id = ?`,
-      [newPoints, newLevel, newPointsToNext, newStage, pet.id]
+      'UPDATE pets SET current_points = ?, points_to_next_level = ? WHERE id = ?',
+      [newPoints, newPointsToNext, pet.id]
     );
-
-    for (const stage of evolutionRecords) {
-      await dbRun(
-        'INSERT INTO evolution_history (id, pet_id, stage) VALUES (?, ?, ?)',
-        [uuidv4(), pet.id, stage]
-      );
-    }
 
     if (get().pet?.child_id === childId) {
       await get().loadPet(childId);
-      if (evolved) {
-        const finalStage = evolutionRecords[evolutionRecords.length - 1];
-        set({ justEvolved: true, evolvedToStage: finalStage });
-      }
     }
+
+    // 检查现在能升几级
+    await get().checkPendingLevelUps();
+  },
+
+  // ============================================================
+  // 手动升级逻辑
+  // ============================================================
+
+  checkPendingLevelUps: async () => {
+    const { pet } = get();
+    if (!pet || pet.level >= 8) {
+      set({ pendingLevelUps: 0 });
+      return;
+    }
+    let points = pet.current_points;
+    let level = pet.level;
+    let count = 0;
+    while (level < 8) {
+      const needed = getPointsToNextLevel(level);
+      if (needed === 0 || points < needed) break;
+      points -= needed;
+      level += 1;
+      count += 1;
+    }
+    set({ pendingLevelUps: count });
+  },
+
+  /** 手动升一级。每次点击只升一级，经验溢出时需多次点击 */
+  manualLevelUp: async (childId: string) => {
+    const { pet } = get();
+    if (!pet || pet.ran_away_at) {
+      return { leveled: false, evolved: false, newLevel: pet?.level ?? 1, newStage: pet?.current_stage ?? 1 };
+    }
+    if (pet.level >= 8) {
+      return { leveled: false, evolved: false, newLevel: 8, newStage: pet.current_stage };
+    }
+
+    const needed = getPointsToNextLevel(pet.level);
+    if (needed === 0 || pet.current_points < needed) {
+      return { leveled: false, evolved: false, newLevel: pet.level, newStage: pet.current_stage };
+    }
+
+    const newPoints = pet.current_points - needed;
+    const newLevel = pet.level + 1;
+    const prevStage = pet.current_stage;
+    const newStage = getStageForLevel(newLevel);
+    const evolved = newStage > prevStage;
+    const newPointsToNext = getPointsToNextLevel(newLevel);
+
+    // 更新宠物
+    await dbRun(
+      'UPDATE pets SET current_points = ?, level = ?, points_to_next_level = ?, current_stage = ? WHERE id = ?',
+      [newPoints, newLevel, newPointsToNext, newStage, pet.id]
+    );
+
+    // 记录进化历史
+    if (evolved) {
+      await dbRun(
+        'INSERT INTO evolution_history (id, pet_id, stage) VALUES (?, ?, ?)',
+        [uuidv4(), pet.id, newStage]
+      );
+    }
+
+    // 从孩子钱包扣减升级所需积分
+    const childRow = await dbGetOne<{ current_points: number }>(
+      'SELECT current_points FROM children WHERE id = ?', [childId]
+    );
+    const actualDeduction = Math.min(needed, childRow?.current_points ?? 0);
+    if (actualDeduction > 0) {
+      await dbRun(
+        'UPDATE children SET current_points = current_points - ? WHERE id = ?',
+        [actualDeduction, childId]
+      );
+      await dbRun(
+        `INSERT INTO point_records (id, child_id, rule_id, task_id, points_change, currency_type, reason, approved, created_at)
+         VALUES (?, ?, NULL, NULL, ?, 'points', ?, 1, ?)`,
+        [uuidv4(), childId, -actualDeduction, `宠物手动升级（Lv${pet.level}→${newLevel}）`, new Date().toISOString()]
+      );
+      await useFamilyStore.getState().refreshChildFromDb(childId);
+    }
+
+    // 更新本地状态
+    await get().loadPet(pet.child_id);
+
+    // 重新检查剩余可升级次数
+    await get().checkPendingLevelUps();
+
+    if (evolved) {
+      set({ justEvolved: true, evolvedToStage: newStage });
+    }
+
+    return { leveled: true, evolved, newLevel, newStage };
   },
 
   // ============================================================
@@ -685,8 +713,24 @@ export const usePetStore = create<PetState>()((set, get) => ({
     // 创建新宠物
     const newPet = await get().createPet(childId, speciesId, petName);
 
-    // 刷新孩子数据（积分已扣减）
+    // 将当前剩余积分累加到新宠物升级经验中（让孩子之前的积累不白费）
+    const childPoints = await dbGetOne<{ current_points: number }>(
+      'SELECT current_points FROM children WHERE id = ?', [childId]
+    );
+    if (childPoints && childPoints.current_points > 0) {
+      await dbRun(
+        'UPDATE pets SET current_points = current_points + ? WHERE id = ?',
+        [childPoints.current_points, newPet.id]
+      );
+    }
+
+    // 刷新宠物状态（含更新后的经验）
+    await get().loadPet(childId);
+    // 刷新孩子数据
     await useFamilyStore.getState().refreshChildFromDb(childId);
+
+    // 检查新宠物可升级次数
+    await get().checkPendingLevelUps();
 
     return newPet;
   },

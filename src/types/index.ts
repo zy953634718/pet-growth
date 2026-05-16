@@ -188,6 +188,7 @@ export interface Family {
   id: string;
   name: string;
   parent_password: string;
+  parent_pin_length: number;
   created_at: string;
 }
 

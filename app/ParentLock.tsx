@@ -16,7 +16,7 @@ export default function ParentLockScreen() {
     return v === 'parent';
   }, [params?.target]);
 
-  const expectedLen = currentFamily?.parent_password?.length ?? 0;
+  const expectedLen = currentFamily?.parent_pin_length ?? 6;
   const dotCount = Math.min(6, Math.max(4, expectedLen || 6));
 
   const [input, setInput] = useState('');

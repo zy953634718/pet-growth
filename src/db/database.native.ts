@@ -46,6 +46,7 @@ async function createTables(): Promise<void> {
       id TEXT PRIMARY KEY NOT NULL,
       name TEXT NOT NULL,
       parent_password TEXT NOT NULL,
+      parent_pin_length INTEGER DEFAULT 6,
       created_at TEXT DEFAULT (datetime('now'))
     );`,
 
@@ -377,6 +378,8 @@ async function createTables(): Promise<void> {
     // 检查旧列是否存在，存在则重命名
     `ALTER TABLE pets RENAME COLUMN current_exp TO current_points;`,
     `ALTER TABLE pets RENAME COLUMN exp_to_next_level TO points_to_next_level;`,
+    // 新增 parent_pin_length 列（v1→v2 迁移）
+    `ALTER TABLE family ADD COLUMN parent_pin_length INTEGER DEFAULT 6;`,
   ];
 
   for (const sql of migrations) {
@@ -486,12 +489,13 @@ export async function wipeAllUserData(): Promise<void> {
   await database.execAsync('PRAGMA foreign_keys = OFF;');
   await database.execAsync('BEGIN;');
   try {
+    // 系统级配置不重置：ai_config, ai_safety_config, app_kv
     const tables = [
-      'app_kv', 'daily_behavior_records', 'daily_summaries', 'chat_messages',
+      'daily_behavior_records', 'daily_summaries', 'chat_messages',
       'pet_equipments', 'purchases', 'point_records', 'task_completions',
       'streaks', 'tasks', 'task_templates', 'task_categories',
       'behavior_rules', 'behavior_categories', 'evolution_history',
-      'pets', 'children', 'shop_items', 'ai_safety_config', 'ai_config', 'family',
+      'pets', 'children', 'shop_items', 'family',
     ];
     for (const t of tables) {
       await database.runAsync(`DELETE FROM ${t}`);

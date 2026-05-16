@@ -75,6 +75,8 @@ export default function ChildHomeScreen() {
     returnFromRunaway,
     saveToCollection,
     adoptNewPet,
+    pendingLevelUps,
+    manualLevelUp,
   } = usePetStore();
   const { tasks, loadTasks, submitTask } = useTaskStore();
   const { records, loadRecords } = useBehaviorStore();
@@ -315,6 +317,36 @@ export default function ChildHomeScreen() {
                 {pet?.current_points || 0}/{pet?.points_to_next_level || 100} 积分
               </Text>
             </View>
+
+            {/* 手动升级按钮：经验满足时可逐级升级 */}
+            {pendingLevelUps > 0 && (
+              <TouchableOpacity
+                style={styles.levelUpBtn}
+                activeOpacity={0.8}
+                onPress={async () => {
+                  if (!currentChild?.id) return;
+                  try {
+                    const result = await manualLevelUp(currentChild.id);
+                    if (result.leveled) {
+                      const remain = usePetStore.getState().pendingLevelUps;
+                      showModal(
+                        result.evolved ? '🎉 进化！' : '⬆️ 升级！',
+                        `宠物提升至 Lv.${result.newLevel}！${result.evolved ? ' 形态已进化！' : ''}${remain > 0 ? `\n还可再升级 ${remain} 次` : ''}`
+                      );
+                    }
+                  } catch (err: any) {
+                    showModal('升级失败', err.message || '请稍后再试');
+                  }
+                }}
+              >
+                <Text style={styles.levelUpBtnEmoji}>⬆️</Text>
+                <View style={styles.levelUpBtnTextWrap}>
+                  <Text style={styles.levelUpBtnTitle}>可升级 {pendingLevelUps} 次</Text>
+                  <Text style={styles.levelUpBtnHint}>点击升级至 Lv.{pet ? pet.level + 1 : '?'}</Text>
+                </View>
+                <Text style={styles.levelUpBtnArrow}>›</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
@@ -797,6 +829,39 @@ const styles = StyleSheet.create({
   collectionBtnArrow: {
     fontSize: Typography['2xl'],
     color: Colors.neutral300,
+    fontWeight: '700',
+  },
+  // 手动升级按钮
+  levelUpBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.warningLight,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing[3],
+    marginTop: Spacing[2],
+    borderWidth: 1,
+    borderColor: Colors.warningBorder,
+  },
+  levelUpBtnEmoji: {
+    fontSize: Typography['2xl'],
+    marginRight: Spacing[2],
+  },
+  levelUpBtnTextWrap: {
+    flex: 1,
+  },
+  levelUpBtnTitle: {
+    fontSize: Typography.base,
+    fontWeight: '700',
+    color: Colors.warningDark,
+  },
+  levelUpBtnHint: {
+    fontSize: Typography.xs,
+    color: Colors.warningDeepDark,
+    marginTop: 2,
+  },
+  levelUpBtnArrow: {
+    fontSize: Typography['2xl'],
+    color: Colors.warning,
     fontWeight: '700',
   },
   adoptGrid: {

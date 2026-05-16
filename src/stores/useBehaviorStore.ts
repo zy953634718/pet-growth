@@ -7,6 +7,7 @@ import {
   CurrencyType,
 } from '../types';
 import { dbGetAll, dbRun, dbRunTransaction } from '../db/helpers';
+import { usePetStore } from './usePetStore';
 
 // ============================================================
 // Store interface
@@ -188,7 +189,6 @@ export const useBehaviorStore = create<BehaviorState>()((set, get) => ({
 
     // 审批通过时更新宠物经验值
     if (approved === 1 && points > 0) {
-      const { usePetStore } = require('./usePetStore');
       await usePetStore.getState().addPointsForChild(childId, points);
     }
 
@@ -224,7 +224,6 @@ export const useBehaviorStore = create<BehaviorState>()((set, get) => ({
 
     // 审批通过且正积分时更新宠物经验值
     if (approved && record.points_change > 0) {
-      const { usePetStore } = require('./usePetStore');
       await usePetStore.getState().addPointsForChild(record.child_id, record.points_change);
     }
 
@@ -291,7 +290,6 @@ export const useBehaviorStore = create<BehaviorState>()((set, get) => ({
 
     // 正积分时更新宠物经验值
     if (currency === 'points' && points > 0) {
-      const { usePetStore } = require('./usePetStore');
       await usePetStore.getState().addPointsForChild(childId, points);
     }
 

@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useFamilyStore } from '@/stores/useFamilyStore';
 import { useTaskStore } from '@/stores/useTaskStore';
 import { useBehaviorStore } from '@/stores/useBehaviorStore';
 import { Colors, CategoryPalette, Typography, Spacing, BorderRadius, Shadows } from '@/theme';
+
 
 type Period = 'week' | 'month' | 'all';
 
@@ -13,11 +15,14 @@ const PERIOD_LABELS: Record<Period, string> = { week: '本周', month: '本月',
 const DAY_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
 export default function StatsScreen() {
+  const router = useRouter();
   const [period, setPeriod] = useState<Period>('week');
+
 
   const { currentFamily, currentChild, children, selectChild } = useFamilyStore();
   const { tasks, completions, streaks, loadTasks, loadCompletions, loadStreaks } = useTaskStore();
   const { records, categories, rules, loadRecords, loadCategories, loadRules } = useBehaviorStore();
+
 
   useEffect(() => {
     if (!currentChild && children.length > 0) {
@@ -201,10 +206,14 @@ export default function StatsScreen() {
               <Text style={styles.summaryLabel}>完成任务</Text>
             </View>
             <View style={styles.summaryDivider} />
-            <View style={styles.summaryItem}>
+            <TouchableOpacity
+              style={styles.summaryItem}
+              activeOpacity={0.7}
+              onPress={() => router.push({ pathname: '/PointsHistory', params: { childId: currentChild?.id ?? '' } })}
+            >
               <Text style={[styles.summaryNum, { color: Colors.warning }]}>{totalPoints}</Text>
-              <Text style={styles.summaryLabel}>获得积分</Text>
-            </View>
+              <Text style={styles.summaryLabel}>获得积分 ›</Text>
+            </TouchableOpacity>
             <View style={styles.summaryDivider} />
             <View style={styles.summaryItem}>
               <Text style={[styles.summaryNum, { color: Colors.error }]}>🔥{streakDays}</Text>
@@ -295,6 +304,7 @@ export default function StatsScreen() {
 
         <View style={{ height: Spacing[6] }} />
       </ScrollView>
+
     </SafeAreaView>
   );
 }

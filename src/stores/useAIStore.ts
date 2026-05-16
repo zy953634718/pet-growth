@@ -1,25 +1,48 @@
 import { create } from 'zustand';
+import { Platform } from 'react-native';
 import { v4 as uuidv4 } from 'uuid';
+import * as SecureStore from 'expo-secure-store';
 import { AIConfig, AISafetyConfig, ChatMessage, MoodType, PetEvolutionStage, AIFallbackReply } from '../types';
-import { getDatabase } from '../db/database';
+import { dbRun, dbGetOne, dbGetAll } from '../db/helpers';
 import { getStageInfo } from '../constants/evolution';
 
 // ============================================================
-// DB helpers
+// SecureStore helpers — API key 加密存储（S-02 修复）
 // ============================================================
-async function dbRun(sql: string, params: any[] = []) {
-  const db = await getDatabase();
-  await db.runAsync(sql, params);
+function apiKeyStorageKey(familyId: string): string {
+  return `petgrowth_ai_key_${familyId}`;
 }
 
-async function dbGetOne<T>(sql: string, params: any[] = []): Promise<T | null> {
-  const db = await getDatabase();
-  return (await db.getFirstAsync<T>(sql, params)) ?? null;
+async function loadApiKey(familyId: string): Promise<string | null> {
+  if (Platform.OS === 'web') {
+    // Web 端 fallback：从 localStorage 读取
+    return localStorage.getItem(apiKeyStorageKey(familyId)) || null;
+  }
+  try {
+    return await SecureStore.getItemAsync(apiKeyStorageKey(familyId));
+  } catch {
+    return null;
+  }
 }
 
-async function dbGetAll<T>(sql: string, params: any[] = []): Promise<T[]> {
-  const db = await getDatabase();
-  return (await db.getAllAsync<T>(sql, params)) ?? [];
+async function saveApiKey(familyId: string, key: string | null): Promise<void> {
+  if (Platform.OS === 'web') {
+    if (key) {
+      localStorage.setItem(apiKeyStorageKey(familyId), key);
+    } else {
+      localStorage.removeItem(apiKeyStorageKey(familyId));
+    }
+    return;
+  }
+  try {
+    if (key) {
+      await SecureStore.setItemAsync(apiKeyStorageKey(familyId), key);
+    } else {
+      await SecureStore.deleteItemAsync(apiKeyStorageKey(familyId));
+    }
+  } catch {
+    // 静默失败，不影响主流程
+  }
 }
 
 // ============================================================
@@ -153,46 +176,90 @@ export const useAIStore = create<AIState>()((set, get) => ({
   isOnline: true,
 
   loadConfig: async (familyId: string) => {
-    const config = await dbGetOne<AIConfig>(
+    let config = await dbGetOne<AIConfig>(
       'SELECT * FROM ai_config WHERE family_id = ?',
       [familyId]
     );
+    if (!config) {
+      set({ config: null });
+      return;
+    }
+
+    // 从 SecureStore 加载 API key（S-02 修复）
+    const secureKey = await loadApiKey(familyId);
+
+    // 迁移：如果 DB 中仍有明文 key，迁移到 SecureStore 并清空 DB 字段
+    if (config.api_key_encrypted && !secureKey) {
+      await saveApiKey(familyId, config.api_key_encrypted);
+      await dbRun(
+        'UPDATE ai_config SET api_key_encrypted = NULL WHERE id = ?',
+        [config.id]
+      );
+    }
+
+    if (secureKey) {
+      config = { ...config, api_key_encrypted: secureKey };
+    }
+
     set({ config });
   },
 
   updateConfig: async (familyId: string, updates: Partial<AIConfig>) => {
     const { config } = get();
+
+    // 分离 API key 更新（写入 SecureStore，不写入 DB）
+    const apiKeyUpdate = updates.api_key_encrypted;
+    const dbUpdates = { ...updates };
+    delete dbUpdates.api_key_encrypted;
+
     if (config) {
       const fields: string[] = [];
       const values: any[] = [];
-      if (updates.model_provider !== undefined) { fields.push('model_provider = ?'); values.push(updates.model_provider); }
-      if (updates.model_name !== undefined) { fields.push('model_name = ?'); values.push(updates.model_name); }
-      if (updates.api_key_encrypted !== undefined) { fields.push('api_key_encrypted = ?'); values.push(updates.api_key_encrypted); }
-      if (updates.temperature !== undefined) { fields.push('temperature = ?'); values.push(updates.temperature); }
-      if (updates.max_tokens !== undefined) { fields.push('max_tokens = ?'); values.push(updates.max_tokens); }
+      if (dbUpdates.model_provider !== undefined) { fields.push('model_provider = ?'); values.push(dbUpdates.model_provider); }
+      if (dbUpdates.model_name !== undefined) { fields.push('model_name = ?'); values.push(dbUpdates.model_name); }
+      if (dbUpdates.temperature !== undefined) { fields.push('temperature = ?'); values.push(dbUpdates.temperature); }
+      if (dbUpdates.max_tokens !== undefined) { fields.push('max_tokens = ?'); values.push(dbUpdates.max_tokens); }
 
       if (fields.length > 0) {
         values.push(config.id);
         await dbRun(`UPDATE ai_config SET ${fields.join(', ')} WHERE id = ?`, values);
-        set({ config: { ...config, ...updates } });
       }
+
+      // 保存 API key 到 SecureStore（或清空）
+      if (apiKeyUpdate !== undefined) {
+        await saveApiKey(familyId, apiKeyUpdate || null);
+        // 清空 DB 中可能残留的旧 API key 字段
+        await dbRun('UPDATE ai_config SET api_key_encrypted = NULL WHERE id = ?', [config.id]);
+      }
+
+      const updatedConfig = { ...config, ...dbUpdates };
+      if (apiKeyUpdate !== undefined) {
+        updatedConfig.api_key_encrypted = apiKeyUpdate || null;
+      }
+      set({ config: updatedConfig });
     } else {
       const id = uuidv4();
       const newConfig: AIConfig = {
         id,
         family_id: familyId,
-        model_provider: updates.model_provider || 'qwen',
-        model_name: updates.model_name || 'qwen-turbo',
-        api_key_encrypted: updates.api_key_encrypted || null,
-        temperature: updates.temperature ?? 0.7,
-        max_tokens: updates.max_tokens ?? 200,
+        model_provider: dbUpdates.model_provider || 'qwen',
+        model_name: dbUpdates.model_name || 'qwen-turbo',
+        api_key_encrypted: apiKeyUpdate || null,
+        temperature: dbUpdates.temperature ?? 0.7,
+        max_tokens: dbUpdates.max_tokens ?? 200,
         created_at: new Date().toISOString(),
       };
+
+      // API key 写入 SecureStore，不写入 DB
+      if (apiKeyUpdate) {
+        await saveApiKey(familyId, apiKeyUpdate);
+      }
+
       await dbRun(
         `INSERT INTO ai_config (id, family_id, model_provider, model_name, api_key_encrypted, temperature, max_tokens, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, NULL, ?, ?, ?)`,
         [newConfig.id, newConfig.family_id, newConfig.model_provider, newConfig.model_name,
-          newConfig.api_key_encrypted, newConfig.temperature, newConfig.max_tokens, newConfig.created_at]
+          newConfig.temperature, newConfig.max_tokens, newConfig.created_at]
       );
       set({ config: newConfig });
     }

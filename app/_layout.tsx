@@ -95,6 +95,7 @@ export default function RootLayout() {
           {/* Parent tabs */}
           <Stack.Screen name="(parent-tabs)" options={{ headerShown: false }} />
 
+          <Stack.Screen name="PointsHistory" options={{ headerShown: false }} />
           <Stack.Screen name="+not-found" />
         </Stack>
       </ThemeProvider>

@@ -19,7 +19,7 @@ const TAB_CONFIG: Array<{ key: ShopTab; label: string; icon: string }> = [
 
 export default function ShopScreen() {
   const { currentChild, currentFamily } = useFamilyStore();
-  const { items, loadItems, purchaseItem, loadEquipments } = useShopStore();
+  const { items, loadItems, purchaseItem, loadEquipments, exchangePointsForStars } = useShopStore();
   const [tab, setTab] = useState<ShopTab>('gift');
   const [selectedItem, setSelectedItem] = useState<ShopItem | null>(null);
 
@@ -72,6 +72,23 @@ export default function ShopScreen() {
           <PointBadge type="stars" amount={stars} size="small" />
         </View>
       </View>
+
+      {/* 积分兑换星星 */}
+      {balance >= 100 && (
+        <TouchableOpacity
+          style={styles.exchangeBar}
+          activeOpacity={0.7}
+          onPress={() => {
+            if (!currentChild) return;
+            exchangePointsForStars(currentChild.id, 100)
+              .then(() => showToast('成功', '已兑换 1 颗星星 ⭐'))
+              .catch((err: Error) => showToast('提示', err.message));
+          }}
+        >
+          <Text style={styles.exchangeText}>💱 100 积分兑换 1 ⭐</Text>
+          <Text style={styles.exchangeArrow}>→</Text>
+        </TouchableOpacity>
+      )}
 
       {/* Tab 栏 */}
       <View style={styles.tabRow}>
@@ -155,11 +172,11 @@ export default function ShopScreen() {
         showCloseButton={false}
         maxWidth={300}
       >
-        <Text style={{ fontSize: 15, color: Colors.neutral600, textAlign: 'center', marginBottom: 20 }}>
+        <Text style={{ fontSize: 15, color: Colors.neutral600, textAlign: 'center', marginBottom: Spacing.lg }}>
           {toastMessage}
         </Text>
         <TouchableOpacity
-          style={[ModalStyles.confirmButton, { marginTop: 4 }]}
+          style={[ModalStyles.confirmButton, { width: '100%' }]}
           onPress={() => setToastVisible(false)}
         >
           <Text style={ModalStyles.confirmButtonText}>知道了</Text>
@@ -170,16 +187,19 @@ export default function ShopScreen() {
       <Modal
         visible={!!selectedItem}
         onClose={() => setSelectedItem(null)}
-        showCloseButton={false}
+        title="确认兑换"
+        showCloseButton={true}
+        scrollable
         maxWidth={320}
       >
         <Text style={styles.modalEmoji}>
           {selectedItem?.image || (selectedItem ? ITEM_TYPE_EMOJI[selectedItem.item_type] : '🎁')}
         </Text>
-        <Text style={styles.modalSubtitle}>确认兑换</Text>
         <Text style={styles.modalName}>{selectedItem?.name}</Text>
         {selectedItem && (
-          <PointBadge type={selectedItem.price_type} amount={selectedItem.price} size="large" />
+          <View style={{ alignItems: 'center', marginBottom: Spacing.lg }}>
+            <PointBadge type={selectedItem.price_type} amount={selectedItem.price} size="large" />
+          </View>
         )}
 
         <View style={ModalStyles.buttonRow}>
@@ -193,7 +213,7 @@ export default function ShopScreen() {
             style={ModalStyles.confirmButton}
             onPress={handlePurchase}
           >
-            <Text style={ModalStyles.confirmButtonText}>确认购买 ✨</Text>
+            <Text style={ModalStyles.confirmButtonText}>确认兑换 ✨</Text>
           </TouchableOpacity>
         </View>
       </Modal>
@@ -322,17 +342,34 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
     textAlign: 'center',
   },
-  modalSubtitle: {
-    fontSize: 17,
-    color: Colors.neutral500,
-    marginBottom: Spacing.xs,
-    textAlign: 'center',
-  },
   modalName: {
     fontSize: 22,
     fontWeight: 'bold',
     color: Colors.neutral900,
     marginBottom: Spacing.md,
     textAlign: 'center',
+  },
+  exchangeBar: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: Spacing[4],
+    marginHorizontal: Spacing[4],
+    marginBottom: Spacing[2],
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.starLight,
+    borderWidth: 1,
+    borderColor: Colors.starBorder,
+    gap: 8,
+  },
+  exchangeText: {
+    fontSize: Typography.base,
+    fontWeight: '700',
+    color: Colors.warningDark,
+  },
+  exchangeArrow: {
+    fontSize: Typography.base,
+    color: Colors.star,
   },
 });
